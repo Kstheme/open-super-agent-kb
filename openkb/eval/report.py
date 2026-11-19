@@ -1,8 +1,9 @@
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Mapping
 
 from .contract import ReviewResult
+from .metrics import CaseMetrics, Metrics
 
 
 def validate_report_versions(report: Mapping[str, object]) -> None:
@@ -24,6 +25,15 @@ def validate_report_versions(report: Mapping[str, object]) -> None:
 class CaseReport:
     case_id: str
     result: ReviewResult
+    metrics: CaseMetrics | None = None
+
+
+@dataclass(frozen=True)
+class RunSummary:
+    cases: tuple[CaseReport, ...]
+    aggregate: Metrics
+    excluded_cases: dict[str, tuple[str, ...]]
+    incomplete_cases: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -35,6 +45,9 @@ class RunReport:
     profile_version: str
     price_table_version: str | None
     cases: tuple[CaseReport, ...]
+    aggregate: Metrics | None = None
+    runs: tuple[RunSummary, ...] = ()
+    disagreement: dict[str, float | None] = field(default_factory=dict)
 
     def to_json(self) -> str:
         report = asdict(self)
