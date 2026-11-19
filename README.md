@@ -1,18 +1,12 @@
 # openkb
 
-**A local-first knowledge base that says what needs changing when a source document changes.**
+**A local-first knowledge base for keeping checklists and reports up to date when their sources change.**
 
 [中文](./README.zh-CN.md)
 
-Most knowledge bases stop at retrieval: you get ten snippets and do the rest yourself. openkb stores *claims* with evidence, builds *artifacts* from those claims, and when a source document changes it tells you which conclusions — and which artifacts — are affected.
+openkb is designed to run on one machine. Its first use case is **maintaining policy and compliance checklists**. Give it a set of policy documents and a goal. An agent extracts claims backed by evidence and assembles them into a checklist or report. Each claim traces back to a specific version and passage. When a policy changes, openkb identifies affected claims and artifact items, then proposes revisions for you to review.
 
-```
-pipx install openkb
-openkb init
-openkb serve          # http://127.0.0.1:8765
-```
-
-One command to install. One file to back up. No services to run.
+**Example** Build a reimbursement checklist from a travel policy. If the lodging cap changes, openkb identifies the affected checklist item, shows the updated clause, and suggests a revision you can check against the evidence.
 
 ## Why
 
@@ -27,15 +21,13 @@ Traditional enterprise knowledge bases fail in four predictable ways:
 
 ## What makes it different
 
-1. **It delivers artifacts, not search results.** Give it a goal; it decides what to read, fills its own evidence gaps, and produces a usable checklist or report.
-2. **Every conclusion traces back to a source.** Not "the AI says so" — *this clause, in this section, of this version*.
-3. **It knows what your change breaks.** Edit a policy; it names the affected conclusions, the clause that changed, and the artifact that needs revising.
-
-The three are a ladder: capability → trust → durability. Together they form the demo: ask → get an artifact → change one document → see exactly what needs revision.
+1. **Build a checklist or report from a goal.** The system uses an artifact outline to identify gaps in coverage. The agent finds evidence to fill those gaps and assembles the artifact.
+2. **Trace every claim to the source text.** For example, a checklist item can point to section 2.3 of the June 2024 version of a policy.
+3. **Review affected items when sources change.** The system locates potentially affected claims. The agent judges which changes are material and proposes revisions to the relevant artifact items.
 
 ## How it works
 
-- Documents are parsed into structure-aware blocks; an agent extracts claims, each bound to a span. **No span, no claim** — the ledger rejects it.
+- Documents are parsed into structure-aware blocks with stable cross-version keys; an agent extracts claims, each bound to a span. **No span, no claim** — the ledger rejects it.
 - Dependencies are not stored separately. "Which claims depend on this document" is derived from `evidence → block → version → document`, so it can never drift out of sync.
 - When a file hash changes, the system computes the affected set, and the agent judges whether the change is *material*. The system owns bookkeeping; the agent owns judgment.
 - Tasks are durable: every step is checkpointed, every side effect is queued, and hitting a budget cap leaves a resumable task with a gap list rather than an exception.
@@ -71,7 +63,7 @@ Backup is a directory copy. Migration is a directory copy.
 
 ## Status
 
-Pre-alpha. The design is settled; implementation starts at M0 (evaluation harness) before the core — see [docs/design.md](./docs/design.md).
+The project is **pre-alpha** and preparing for M0. M0 uses synthetic policy documents to measure recall, false-positive rate, latency, and cost for a baseline that regenerates the artifact and runs a semantic diff. The sections above describe the product design. `pipx` installation and a local web demo are planned for M4. [System design](./docs/design.md) · [M0 evaluation spec](./docs/specs/0001-m0-eval-harness.md)
 
 ## Non-goals
 

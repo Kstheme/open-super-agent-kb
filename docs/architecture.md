@@ -75,12 +75,16 @@ flowchart TB
 |---|---|---|
 | 资料 | `source_document` / `document_version` | 进库的原始材料，每个版本原样保留 |
 | 块 | `block` | 结构感知切分的结果，diff 与 span 对齐的单位 |
+| 块稳定键 | `block.block_key` | 跨版本认定"同一个块"的依据，diff 对齐的单位 |
 | 声明 | `claim` | 一条可独立判断真假或适用范围的断言 |
 | 证据 | `evidence` | 指向具体版本具体位置的原文片段 |
 | 账本 | 以上各表之和 | Agent 的长期记忆，产物可追溯的依据 |
 | 产物 | `artifact` / `artifact_claim` | 交付给人的东西，只增不改 |
+| 产物骨架 | `task.skeleton_json` | 一次委托要求产物具备的槽位结构，缺口以它为基准 |
 | 触发 | `trigger` | 不可变外部事件，幂等的单位 |
 | 任务 | `task` | 一次持久可恢复的工作，自己拥有状态 |
+| 建库 | `task.kind=ingest` | 按文件增量推进的长期任务，预算与恢复粒度与委托不同 |
+| 缺口 | `core/gaps/`（派生，不落表） | 骨架中尚未被有效声明覆盖的槽位，可复算 |
 | 复核 | `review` | 资料变化后对受影响声明的重新判断 |
 | 差异提案 | `review.proposal_json` | 按块组织的修订建议，人逐块确认 |
 
@@ -179,6 +183,8 @@ flowchart LR
 - 换前端 → React 后期接进来，`server/` 只多一层静态资源。
 - 换后端 → 只写一个 `Store` 的第二实现（ADR-0001 预留）。
 
+与此配套的一条非物理约束：**缺口只能由 `core/gaps/` 从骨架与账本导出，`agent/` 不得构造缺口**（ADR-0004）。骨架由模板产出、以 JSON 传入 `core/`，所以这条约束不破坏上面第一条——`core/` 仍然不需要 import `profiles/`。
+
 ## 4. 两条触发线
 
 ```mermaid
@@ -187,10 +193,12 @@ flowchart LR
     F["文件 hash 变化<br/>watcher 或 openkb sync"] --> T2["Trigger(document_changed)"]
 
     T1 --> K1["Task(deliver)"]
+    K1 --> SK["模板 → 产物骨架"]
+    SK --> GP["gaps/ 算缺口<br/>确定性，可复算"]
     T2 --> CHG["changes/ 算受影响集合<br/>确定性，可复算"]
     CHG --> K2["Task(review)"]
 
-    K1 --> LOOP["Agent loop"]
+    GP --> LOOP["Agent loop<br/>只能认领与关闭缺口"]
     K2 --> NEW["Agent 只判断实质影响"]
     LOOP --> LG[("账本")]
     NEW --> LG
@@ -203,6 +211,8 @@ flowchart LR
 > **受影响集合由系统算，实质影响由 Agent 判。**
 
 前者是纯粹的图遍历（用到哪条证据、证据在哪个块、块属于哪个版本），错不了也不该让模型猜；后者问的是"这个改动改变了声明的真值或适用范围吗"，只有模型能做，而它做错了要能被人看见——所以差异提案里保留"我判断无影响"的记录。
+
+同一条原则也适用于第一条线：**缺口由系统算，取证由 Agent 做。** 缺口是骨架里尚未被有效声明覆盖的槽位，从骨架与账本直接导出；若允许 Agent 自己申报缺口，它永远能列出新的，"缺口清零"就退化成"预算到顶"，`done` 不可达（ADR-0004）。
 
 ## 5. 流程一：建库
 
@@ -221,8 +231,9 @@ sequenceDiagram
     U->>CLI: openkb sync
     CLI->>ING: 扫描本地目录
     loop 每个文件
-        ING->>ING: 解析 → 按标题层级与条款编号切块
+        ING->>ING: 解析 → 按标题层级与条款编号切块 → 算 block_key
         ING->>ST: 存 document_version 与 block
+        ING->>ST: 落文件级 checkpoint
     end
     ING->>AG: 逐块或逐组抽取声明
     AG->>AG: JSON Schema 结构化输出
@@ -240,6 +251,8 @@ sequenceDiagram
 
 抽取后不设人工确认环节——确认发生在产物层。理由是逐条确认 100 份资料的声明没人受得了，而产物层每条声明都挂证据、都有上下文，人看得懂也判得动。
 
+建库是 `task.kind=ingest`，预算按文件计而不是按任务计：每完成一个文件即落 checkpoint，中断后从下一个未完成文件继续，失败进失败清单。它不产出缺口——"还差哪几个文件没处理"是进度，不是目标未被覆盖（ADR-0006）。
+
 ## 6. 流程二：委托
 
 ```mermaid
@@ -249,6 +262,7 @@ sequenceDiagram
     participant TG as Trigger
     participant TK as Task
     participant PL as Planner
+    participant GP as gaps/
     participant AG as Agent loop
     participant LG as 账本
     participant AR as 产物
@@ -256,10 +270,12 @@ sequenceDiagram
     U->>TG: 一个目标，自然语言
     TG->>TG: 生成幂等键
     TG->>TK: Task(deliver)，附带预算
-    TK->>PL: 读账本现状与目标
-    PL-->>TK: 步骤 + 初始缺口列表
-    loop 缺口清零，或预算到顶
-        TK->>AG: 取最高优先级缺口
+    TK->>PL: 目标 + 声明模板
+    PL-->>TK: 产物骨架，写入 skeleton_json
+    TK->>GP: 骨架 × 有效声明
+    GP-->>TK: 缺口列表（可复算）
+    loop 缺口清零
+        TK->>AG: 认领最高优先级缺口
         AG->>LG: 先查账本，结构化且精确
         AG->>AG: 不够才检索原文，模糊且贵
         AG->>LG: 写回新声明，或关闭缺口
@@ -276,7 +292,7 @@ sequenceDiagram
 
 两个设计意图：
 
-- **缺口清零是唯一停止条件。** 不是"反思三轮"也不是"置信度超过 0.8"——那些都是调参，缺口是能数出来的东西。
+- **缺口清零是唯一停止条件。** 不是"反思三轮"也不是"置信度超过 0.8"——那些都是调参，缺口是能数出来的东西。**前提是缺口不由 Agent 申报**（ADR-0004）；否则"能数出来"是自述，`done` 不可达。
 - **先查账本再查原文。** 已入账的声明优先复用，这既是准确率来源也是"越用越准"的来源；直接扎进原文是最贵的路径。
 
 ## 7. 流程三：复核（核心差异）
@@ -298,7 +314,7 @@ sequenceDiagram
     FS->>CH: 内容 hash 变了
     CH->>TG: Trigger(document_changed)
     TG->>TK: Task(review)
-    CH->>CH: 新版本入库，块级 diff 对齐旧块新块
+    CH->>CH: 新版本入库，按 block_key 对齐旧块新块
     CH->>LG: 反查 变更块 → evidence → claim
     LG-->>CH: 受影响集合，系统算，可复算
     TK->>AG: 逐条判断是否实质影响
@@ -311,6 +327,8 @@ sequenceDiagram
 ```
 
 **必须由人确认**，不是产品保守，是信任不可逆：一次错改，用户就永久关掉这个功能。所以拒绝的理由要回写 `edit_mark`——它同时是纠错记录和偏好来源。
+
+对齐这一步用稳定键而不是序号：`ordinal` 在文档中间插入一段后全部漂移，`start_offset` 在 docx 自动编号重排、pdf 版式微移后一起作废。`block_key` 由归一化标题路径 + 条款编号 + 文本归一化哈希得出，`ordinal` 只作排序提示；证据本身仍指向具体版本的 `block_id`，稳定键只负责版本间对齐（ADR-0005）。
 
 ## 8. 任务状态机与预算
 
@@ -332,10 +350,12 @@ stateDiagram-v2
 
 | 层级 | 配额 |
 |---|---|
-| 单任务 | 40 步 / 15 万 token / 10 分钟 |
+| 单任务（`deliver` / `review`） | 40 步 / 15 万 token / 10 分钟 |
 | 单步 | 工具调用 ≤ 3 次；单次返回截断 8k token |
 | 80% 处 | Planner 只补最关键缺口 |
 | 超限 | 落盘退出，`state=paused`，输出缺口清单 |
+
+`ingest` 是另一套：预算按文件计，每完成一个文件落 checkpoint，超限或中断后从下一个未完成文件继续，失败进失败清单。它不输出缺口——"还差哪几个文件"是进度，不是目标未被覆盖（ADR-0006）。
 
 「续跑不重复计费」能成立，靠的是 `task.checkpoint_json` + `effect` 的 outbox 语义：已经产生的副作用不会重放，已经花掉的 token 记在 `spent_json` 里。
 
@@ -416,6 +436,9 @@ flowchart LR
 | 风险 | 表现 | 应对 |
 |---|---|---|
 | 依赖粒度失准 | 连太粗 → 全是误报；连太细 → 漏检 | 块级对齐 + 评测驱动调粒度 |
+| 块身份漂移 | 文档插一段，序号全变，受影响集合暴涨成误报 | 稳定键 + M1 一致率 gate（ADR-0005）；无法算键时整篇作一块，不退回序号 |
+| 缺口被 Agent 虚增 | 任务永远做不完，几乎全以 `paused` 结束 | 缺口由系统算，Agent 只能认领（ADR-0004）；`paused` 占比作为健康度指标 |
+| 建库预算不足 | F1 的 100 份资料在 40 步 / 15 万 token 下不可能完成 | `kind=ingest` 按文件计预算与 checkpoint（ADR-0006） |
 | 首次建库成本高 | 用户等太久而流失 | 增量导入、进度可见、失败可重试 |
 | 差异不够明显 | 对手"重新生成 + diff"追平 | M0 先验证，不行就收缩到定位能力 |
 | 中文解析质量 | docx 表格、pdf 版式 | 先支持常见版式，失败清单显式暴露 |

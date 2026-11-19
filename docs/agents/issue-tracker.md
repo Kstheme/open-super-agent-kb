@@ -4,10 +4,10 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 ## Setup status
 
-This repo is not yet a git repository, has no `origin` remote, and `gh` is not installed on this machine. Until all three are true, skills that publish to the issue tracker will fail:
+The repository and its `origin` remote (`github.com/Kstheme/open-super-agent-kb`) are in place. Remaining blocker: **`gh` is not installed on this machine**. Until it is installed and authenticated, skills that publish to the issue tracker will fail:
 
-1. `git init`, then add an `origin` remote pointing at the GitHub repo.
-2. Install the `gh` CLI and run `gh auth login`.
+1. Install the `gh` CLI and run `gh auth login`.
+2. Verify with `gh issue list` from the repo root.
 
 ## Conventions
 

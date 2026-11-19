@@ -79,7 +79,7 @@ ReviewSystem.review(ReviewRequest) -> ReviewResult
 
 `ReviewRequest` 携带：
 
-- `corpus`：变更前与变更后两版资料，按 `document → version → block` 组织；block 带 `heading_path`、`ordinal`、`start_offset`、`end_offset`、`text`。沿用设计文档 §7 的资料侧结构，即使 M0 还不落库。
+- `corpus`：变更前与变更后两版资料，按 `document → version → block` 组织；block 带 `block_key`、`heading_path`、`ordinal`、`start_offset`、`end_offset`、`text`。沿用设计文档 §7 的资料侧结构，即使 M0 还不落库。`block_key` 在 M0 不参与任何计算，但必须出现——数据形状与 M1 一致，否则类型改造会推迟到最贵的时刻（ADR-0005）。
 - `artifact`：基线产物，条目带**稳定 `item_id`** 与 `snapshot_text`。`item_id` 跨版本不变，是逐条比较的前提。
 - `goal`：产物要满足的目标（用户当初的委托）。
 - `budget`：步数、token、墙钟上限。
@@ -127,6 +127,7 @@ ReviewSystem.review(ReviewRequest) -> ReviewResult
 - 小规模合成中文制度语料，条款编号，含表格，便于块级对齐。
 - 5 个修订案例 + 1 个"完全未变"对照案例。
 - 20–30 条声明级标注，逐条标 `material` / `immaterial` / `not_affected`，material 的附"应改成什么"与"依据哪一段"。
+- 每条标注同时记录该产物条目**引用了哪几条声明、哪几段证据**。M0 不用它，但 M2 之后评"产物有没有挂对证据"要复用这套 gold set；事后再补等于重造一份标注。
 - 每个案例是一个自洽的修订对（变更前语料、变更后语料、基线产物、标注），随仓库提交，用内容哈希做版本号。
 - 加载即校验：条目 id 必须属于基线产物、修订对两侧自洽、同一 `item_id` 不得重复标注、标注必须覆盖产物的每一条。校验失败在跑之前报错。
 
@@ -170,4 +171,5 @@ ReviewSystem.review(ReviewRequest) -> ReviewResult
 - **合成语料的质量就是评测的天花板。** 若条款切分在真实 docx/pdf 上不成立，M0 的高分会在 M1 立刻失效。因此合成语料要刻意包含表格与跨条款引用这两个最容易出问题的形态。
 - **`item_id` 的稳定性是整件事的地基。** 它一旦不稳，逐条比较就退化成整篇语义 diff，对手和我方也就无从比较。设计文档 §7 的 `artifact_claim.snapshot_text` 正是为此存在。
 - `oracle` 只存在于测试中。发布出去的 harness 不应带一个能读答案的实现，哪怕它被 flag 关掉——那会永久削弱这份评测的可信度。
+- **gold set 的两个前向兼容点**：`block_key` 与"标注附带声明/证据引用"。它们不让 M0 多测任何东西，只是避免 M2 之后为评测产物而重造标注、重改类型。这是本轮唯一刻意超出 M0 范围的设计，理由是成本接近零而返工成本是几天。
 - 本文放在 `docs/specs/`，与设计文档 §5 的 `spec/`（账本结构、事件、schema）分开。前者描述一次工作，后者是对外版本化的数据契约，两者演进节奏不同。
