@@ -81,6 +81,31 @@ class ReportCliTests(unittest.TestCase):
         self.assertIn("regenerate", completed.stdout)
         self.assertNotIn("建议性", completed.stdout)
 
+    def test_comparison_preserves_large_token_counts_and_fractional_medians(self):
+        report = {
+            "harness_version": "1", "goldset_hash": "same", "system": "regenerate",
+            "model_id": "fixture", "profile_version": "notice-v1", "price_table_version": "prices-v1",
+            "cases": (),
+        }
+        baseline = RunReport(
+            **report, aggregate=Metrics(0.25, 0.0, Timing(1, 2),
+                                        MetricCost(1_000_000, 1_000_000.5, None, None)),
+        )
+        opponent = replace(
+            baseline, aggregate=Metrics(0.75, 0.0, Timing(1, 2),
+                                        MetricCost(1_000_001, 1_000_001.5, None, None)),
+        )
+        a, b = self.directory / "a.json", self.directory / "b.json"
+        a.write_text(baseline.to_json(), encoding="utf-8")
+        b.write_text(opponent.to_json(), encoding="utf-8")
+
+        completed = self.run_cli("compare", "--report-a", a, "--report-b", b)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        lines = completed.stdout.splitlines()
+        self.assertIn("输入 token | 1000000 | 1000001 | +1", lines)
+        self.assertIn("输出 token | 1000000.5 | 1000001.5 | +1", lines)
+
     def test_comparison_warns_and_omits_deltas_for_different_goldsets(self):
         completed = self.compare(changed_hash=True)
         self.assertEqual(completed.returncode, 0, completed.stderr)
