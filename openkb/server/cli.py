@@ -2,9 +2,11 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
+from openkb.agent.model import EndpointError, ModelClient, load_model_config
 from openkb.eval.goldset import load_goldset
 from openkb.eval.noop import NoopReviewSystem
 from openkb.eval.presentation import compare_reports, load_report, render_run_summary
+from openkb.eval.regenerate import REGENERATE_NOTE, RegenerateReviewSystem
 from openkb.eval.runner import run_goldset
 from openkb.eval.thresholds import load_thresholds
 
@@ -16,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     eval_commands = evaluate.add_subparsers(dest="eval_command", required=True)
     run = eval_commands.add_parser("run", help="Run a review system against a gold set")
     run.add_argument("--goldset", type=Path, required=True)
-    run.add_argument("--system", choices=("noop",), default="noop")
+    run.add_argument("--system", choices=("noop", "regenerate"), default="noop")
     run.add_argument("--runs", type=int, default=1)
     run.add_argument("--out", type=Path, default=Path("report.json"))
     run.add_argument("--config", type=Path, help="Override ~/.openkb/config.toml")
@@ -43,7 +45,25 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, KeyError, TypeError) as error:
         run.error(f"Invalid gold set: {error}")
 
-    report = run_goldset(goldset, NoopReviewSystem(), system_name=args.system, runs=args.runs)
+    price_table_version = None
+    notes = ()
+    if args.system == "regenerate":
+        try:
+            config = load_model_config(args.config)
+            client = ModelClient(config)
+            client.preflight()
+        except (EndpointError, ValueError) as error:
+            run.error(str(error))
+        system = RegenerateReviewSystem(client)
+        price_table_version = config.price_table_version
+        notes = (REGENERATE_NOTE,)
+    else:
+        system = NoopReviewSystem()
+
+    report = run_goldset(
+        goldset, system, system_name=args.system, runs=args.runs,
+        price_table_version=price_table_version, notes=notes,
+    )
     report = replace(report, thresholds=thresholds)
     try:
         args.out.write_text(report.to_json(), encoding="utf-8")

@@ -34,6 +34,8 @@ class Corpus:
 class ArtifactItem:
     item_id: str
     snapshot_text: str
+    section: str | None = None
+    ordinal: int | None = None
 
 
 @dataclass(frozen=True)

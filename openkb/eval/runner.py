@@ -56,6 +56,7 @@ def run_goldset(
     system_name: str,
     price_table_version: str | None = None,
     runs: int = 1,
+    notes: tuple[str, ...] = (),
 ) -> RunReport:
     if runs < 1:
         raise ValueError("runs must be at least 1")
@@ -79,4 +80,5 @@ def run_goldset(
             case.case_id: disagreement([summary.cases[index].result for summary in summaries], case.annotations)
             for index, case in enumerate(goldset.cases)
         },
+        notes=notes,
     )

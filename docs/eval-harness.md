@@ -19,7 +19,7 @@ The JSON root contains `profile_version` (an identifier for the declaration temp
 | Document | `document_id`, `version` |
 | Version | `version_id`, `blocks` (array) |
 | Block | Required `block_key` (non-empty string), `heading_path` (array of strings), `ordinal`, `start_offset`, `end_offset`, `text` |
-| `artifact` | Array of items with stable `item_id` and `snapshot_text` |
+| `artifact` | Array of items with stable `item_id` and `snapshot_text`, plus optional `section` and positive `ordinal` |
 | `goal` | String |
 | `budget` | `max_steps`, `max_tokens`, `max_wall_seconds` |
 | `annotations` | Array of objects keyed by `item_id` and `judgment` (`material`, `immaterial`, or `not_affected`). The published gold set also records baseline claim and evidence references, plus the expected revision and its evidence for material annotations. |
@@ -36,7 +36,7 @@ Before running any case, the loader checks block keys and document identity on b
 - Implement `openkb.eval.contract.ReviewSystem.review(request)` and return a `ReviewResult`. Proposals refer to stable artifact item IDs. An evidence reference locates a block by document, version, and block key. Cost carries token counts, an estimated amount, and the model ID. Timing is in seconds. Set `used_ledger` explicitly and use `gaps` or `error` to explain `paused` or `failed` results.
 - Use `load_goldset(Path(...))` and `run_goldset(goldset, system, system_name=..., price_table_version=...)` to run one pass. The runner hands adapters `ReviewRequest` values. It records an adapter exception as a failed case with its error and continues. If an adapter throws after receiving a ledger, its ledger use is unverified and the fallback result carries `used_ledger: false`. Annotations remain available as `GoldCase.annotations` for scoring and test calibration.
 - `RunReport.to_json()` serializes ordered `cases` as `{case_id, result}` records. Each result includes proposals, state, gaps, error, ledger use, timing, and cost. The report uses a single model ID from the case results. The version keys `harness_version`, `goldset_hash`, `system`, `model_id`, `profile_version`, and `price_table_version` are mandatory. `model_id` and `price_table_version` permit JSON `null` when unavailable or inapplicable, as does `cost.estimated_amount`. Use `validate_report_versions` on decoded reports before comparison.
-- The runner scores each review against the case annotations. Calibration tests use the same runner with an oracle, an always-material adapter, and an adapter that throws. P1 owns the public representation of the section and ordinal that #6 needs for alignment.
+- The runner scores each review against the case annotations. Calibration tests use the same runner with an oracle, an always-material adapter, and an adapter that throws.
 
 ## Metrics and repeated runs
 
@@ -70,3 +70,17 @@ Both thresholds accept values between 0 and 1. The first is an absolute recall
 difference and the second is a candidate-to-baseline cost ratio. The comparison
 shows the aggregate values and signed B-minus-A deltas. Reports with different
 gold-set hashes are marked incomparable and their deltas are suppressed.
+
+## Regenerate comparison system
+
+Configure a model with [the M0 model settings](model-budget.md) and run:
+
+```sh
+openkb eval run --goldset goldsets/m0-compliance.json --system regenerate --out regenerate.json
+```
+
+Use the same gold-set file for both systems. The report records the configured model and price-table versions. Pass an alternate TOML path with `--config` when needed. Model endpoint preflight runs once before case evaluation. A missing configuration or unavailable endpoint stops the command with a reason.
+
+The system regenerates the checklist from the complete after snapshot, goal, and baseline section outline. It aligns all known item IDs first, then pairs remaining items by section and ordinal before asking for semantic judgments. Only baseline item IDs enter the scored output. Older artifacts without section metadata are grouped in one section, with ordinals assigned in existing item order. Both model calls share a case budget and a paused run retains the original case gaps and accumulated usage.
+
+The report includes a note about the comparison system's ability to read the full changed corpus without retrieval. `regenerate` uses no ledger.

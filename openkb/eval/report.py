@@ -50,6 +50,7 @@ class RunReport:
     runs: tuple[RunSummary, ...] = ()
     disagreement: dict[str, float | None] = field(default_factory=dict)
     thresholds: EvalThresholds = field(default_factory=EvalThresholds)
+    notes: tuple[str, ...] = ()
 
     def to_json(self) -> str:
         report = asdict(self)

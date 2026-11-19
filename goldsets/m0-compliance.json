@@ -98,19 +98,27 @@
       "artifact": [
         {
           "item_id": "claim-deadline",
-          "snapshot_text": "出差结束后10个工作日内提交报销。"
+          "snapshot_text": "出差结束后10个工作日内提交报销。",
+          "section": "费用审核",
+          "ordinal": 1
         },
         {
           "item_id": "lodging-cap",
-          "snapshot_text": "一类城市限额为每晚500元。"
+          "snapshot_text": "一类城市限额为每晚500元。",
+          "section": "费用审核",
+          "ordinal": 2
         },
         {
           "item_id": "receipt-required",
-          "snapshot_text": "发票和行程记录均须随报销提交。"
+          "snapshot_text": "发票和行程记录均须随报销提交。",
+          "section": "报销提交与支付",
+          "ordinal": 1
         },
         {
           "item_id": "payroll-account",
-          "snapshot_text": "报销款汇入员工登记的工资账户。"
+          "snapshot_text": "报销款汇入员工登记的工资账户。",
+          "section": "报销提交与支付",
+          "ordinal": 2
         }
       ],
       "annotations": [
@@ -253,19 +261,27 @@
       "artifact": [
         {
           "item_id": "committee-approval",
-          "snapshot_text": "含税金额达到20,000元的办公采购须预先取得采购委员会批准。"
+          "snapshot_text": "含税金额达到20,000元的办公采购须预先取得采购委员会批准。",
+          "section": "采购审批",
+          "ordinal": 1
         },
         {
           "item_id": "quote-threshold",
-          "snapshot_text": "含税金额达到20,000元的办公采购须收集至少三家供应商的书面报价。"
+          "snapshot_text": "含税金额达到20,000元的办公采购须收集至少三家供应商的书面报价。",
+          "section": "询价",
+          "ordinal": 1
         },
         {
           "item_id": "quote-minimum",
-          "snapshot_text": "集中采购要求至少三家供应商提供书面报价。"
+          "snapshot_text": "集中采购要求至少三家供应商提供书面报价。",
+          "section": "询价",
+          "ordinal": 2
         },
         {
           "item_id": "acceptance-owner",
-          "snapshot_text": "验收记录由申请部门签署。"
+          "snapshot_text": "验收记录由申请部门签署。",
+          "section": "验收",
+          "ordinal": 1
         }
       ],
       "annotations": [
@@ -412,19 +428,27 @@
       "artifact": [
         {
           "item_id": "approval-owner",
-          "snapshot_text": "档案访问申请由业务负责人审批。"
+          "snapshot_text": "档案访问申请由业务负责人审批。",
+          "section": "权限管理",
+          "ordinal": 1
         },
         {
           "item_id": "revoke-window",
-          "snapshot_text": "员工调离后3个工作日内须撤销原岗位权限。"
+          "snapshot_text": "员工调离后3个工作日内须撤销原岗位权限。",
+          "section": "权限管理",
+          "ordinal": 2
         },
         {
           "item_id": "review-period",
-          "snapshot_text": "电子档案访问权限每季度复查一次。"
+          "snapshot_text": "电子档案访问权限每季度复查一次。",
+          "section": "日常审查",
+          "ordinal": 1
         },
         {
           "item_id": "log-retention",
-          "snapshot_text": "访问日志保留12个月。"
+          "snapshot_text": "访问日志保留12个月。",
+          "section": "日常审查",
+          "ordinal": 2
         }
       ],
       "annotations": [
@@ -563,19 +587,27 @@
       "artifact": [
         {
           "item_id": "scope",
-          "snapshot_text": "岗位培训规定覆盖全体在岗员工。"
+          "snapshot_text": "岗位培训规定覆盖全体在岗员工。",
+          "section": "培训范围",
+          "ordinal": 1
         },
         {
           "item_id": "renewal-period",
-          "snapshot_text": "初训后按24个月的周期安排复训。"
+          "snapshot_text": "初训后按24个月的周期安排复训。",
+          "section": "复训管理",
+          "ordinal": 1
         },
         {
           "item_id": "renewal-reminder",
-          "snapshot_text": "按24个月周期计算到期日，并在到期前30日提醒。"
+          "snapshot_text": "按24个月周期计算到期日，并在到期前30日提醒。",
+          "section": "复训管理",
+          "ordinal": 2
         },
         {
           "item_id": "records-retention",
-          "snapshot_text": "培训完成凭证保存3年。"
+          "snapshot_text": "培训完成凭证保存3年。",
+          "section": "凭证留存",
+          "ordinal": 1
         }
       ],
       "annotations": [
@@ -720,19 +752,27 @@
       "artifact": [
         {
           "item_id": "minutes-deadline",
-          "snapshot_text": "会议记录人须在会后2个工作日内提交纪要。"
+          "snapshot_text": "会议记录人须在会后2个工作日内提交纪要。",
+          "section": "纪要编审",
+          "ordinal": 1
         },
         {
           "item_id": "minutes-reviewer",
-          "snapshot_text": "会议纪要由会议召集人审阅。"
+          "snapshot_text": "会议纪要由会议召集人审阅。",
+          "section": "纪要编审",
+          "ordinal": 2
         },
         {
           "item_id": "minutes-storage",
-          "snapshot_text": "纪要通过审阅后归入部门共享档案。"
+          "snapshot_text": "纪要通过审阅后归入部门共享档案。",
+          "section": "纪要归档",
+          "ordinal": 1
         },
         {
           "item_id": "minutes-retention",
-          "snapshot_text": "会议纪要归档后保留2年。"
+          "snapshot_text": "会议纪要归档后保留2年。",
+          "section": "纪要归档",
+          "ordinal": 2
         }
       ],
       "annotations": [
@@ -867,19 +907,27 @@
       "artifact": [
         {
           "item_id": "record-fields",
-          "snapshot_text": "登记访客姓名、来访单位和访问目的。"
+          "snapshot_text": "登记访客姓名、来访单位和访问目的。",
+          "section": "入区登记",
+          "ordinal": 1
         },
         {
           "item_id": "host-check",
-          "snapshot_text": "访客进入办公区前由接待人确认。"
+          "snapshot_text": "访客进入办公区前由接待人确认。",
+          "section": "入区登记",
+          "ordinal": 2
         },
         {
           "item_id": "badge-return",
-          "snapshot_text": "访客离开办公区时归还访客证。"
+          "snapshot_text": "访客离开办公区时归还访客证。",
+          "section": "离区与留存",
+          "ordinal": 1
         },
         {
           "item_id": "record-keep",
-          "snapshot_text": "访客登记记录保存90天。"
+          "snapshot_text": "访客登记记录保存90天。",
+          "section": "离区与留存",
+          "ordinal": 2
         }
       ],
       "annotations": [
