@@ -79,4 +79,4 @@ No accounts, no multi-tenancy, no web crawling, no auto-applying revisions, no m
 
 ## License
 
-Apache-2.0
+Apache-2.0. See [LICENSE](./LICENSE). Copyright 2026 Kstheme.

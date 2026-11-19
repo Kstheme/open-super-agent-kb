@@ -79,4 +79,4 @@ pre-alpha。设计已定稿，实现从 M0（评测）开始，先于核心—�
 
 ## 许可
 
-Apache-2.0
+Apache-2.0，详见 [LICENSE](./LICENSE)。Copyright 2026 Kstheme。
