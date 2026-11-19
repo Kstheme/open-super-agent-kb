@@ -1,4 +1,5 @@
 import json
+from io import StringIO
 from pathlib import Path
 import tempfile
 import unittest
@@ -123,12 +124,21 @@ class RegenerateTests(unittest.TestCase):
             source.write_text(json.dumps(data), encoding="utf-8")
             command = ["eval", "run", "--goldset", str(source)]
             self.assertEqual(main([*command, "--out", str(noop)]), 0)
+            before = json.loads(noop.read_text(encoding="utf-8"))
+            reference = root / "reference.json"
+            reference.write_text(json.dumps(dict(
+                before, system="ledger", model_id=MODEL.model_id,
+                price_table_version=MODEL.price_table_version,
+                aggregate={"recall": 1.0, "cost": {"estimated_amount": 0.002}},
+            )), encoding="utf-8")
             with (
                 patch("openkb.server.cli.load_model_config", return_value=MODEL),
                 patch("openkb.server.cli.ModelClient", return_value=ModelClient(MODEL, transport=endpoint)),
+                patch("sys.stdout", new_callable=StringIO) as stdout,
             ):
-                self.assertEqual(main([*command, "--system", "regenerate", "--out", str(regenerated)]), 0)
-            before = json.loads(noop.read_text(encoding="utf-8"))
+                self.assertEqual(main([*command, "--system", "regenerate", "--out", str(regenerated),
+                                       "--reference-report", str(reference)]), 0)
+            self.assertIn("只提供定位", stdout.getvalue())
             after = json.loads(regenerated.read_text(encoding="utf-8"))
 
         self.assertEqual(before["goldset_hash"], after["goldset_hash"])

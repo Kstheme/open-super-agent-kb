@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import patch
 import tempfile
 import unittest
 
@@ -67,6 +68,17 @@ class MetricTests(unittest.TestCase):
 
 
 class MetricReportTests(unittest.TestCase):
+    def test_runner_measures_case_wall_time_instead_of_trusting_the_adapter(self):
+        class FixedSystem:
+            def review(self, request):
+                return result()
+
+        goldset = GoldSet("fixture", "hash", (case("timed", a="material"),))
+        with patch("openkb.eval.runner.perf_counter", side_effect=[10.0, 12.0]):
+            report = run_goldset(goldset, FixedSystem(), system_name="fixed")
+        self.assertEqual(report.cases[0].result.timing, Timing(0.5, 2.0))
+        self.assertEqual(report.aggregate.timing, Timing(0.5, 2.0))
+
     def test_macro_medians_exclusions_and_disagreement(self):
         cases = (
             case("small", a="material"),

@@ -10,7 +10,7 @@ The default system is `noop`, and the default destination is `report.json` in th
 
 ## Gold-set input
 
-The JSON root contains `profile_version` (an identifier for the declaration template) and `cases` (an array). The report identifies the input by the SHA-256 hash of the file bytes, including annotations.
+The JSON root contains `profile_version` (an identifier for the declaration template) and `cases` (an array). The published gold set declares `format_version: 1`. This version requires claim and evidence references on every annotation and revision text with evidence on each material annotation. The report identifies the input by the SHA-256 hash of the file bytes, including annotations.
 
 | Path within a case | Fields and values |
 | --- | --- |
@@ -27,7 +27,7 @@ The JSON root contains `profile_version` (an identifier for the declaration temp
 
 The [published M0 gold set](../goldsets/m0-compliance.json) contains 24 annotations for five independent synthetic Chinese policy revisions and an unchanged control. It includes a lodging-limit table, cross-clause references in purchase and training rules, and a meeting-minutes revision that changes wording while preserving policy meaning.
 
-Each published annotation has stable synthetic claim identifiers in `baseline_claim_ids` and references to blocks from the before snapshot in `baseline_evidence`. Material annotations also have `revised_text` and after-snapshot `evidence`. Each reference uses `document_id`, `version_id`, and `block_key`, matching the M0 review port. Minimal existing inputs can still provide just `item_id` and `judgment`.
+Each published annotation has stable synthetic claim identifiers in `baseline_claim_ids` and references to blocks from the before snapshot in `baseline_evidence`. Material annotations also have `revised_text` and after-snapshot `evidence`. Each reference uses `document_id`, `version_id`, and `block_key`, matching the M0 review port. Existing inputs without a format version can still provide just `item_id` and `judgment`. Explicit artifact ordinals must be positive integers and unique within their section.
 
 Before running any case, the loader checks block keys and document identity on both sides. A document must keep identical blocks when the same version ID appears on both sides. The loader rejects unknown or duplicate annotation item IDs, missing annotations, invalid judgments, and evidence references outside the corresponding snapshot.
 
@@ -44,7 +44,7 @@ Pass `--runs N` for positive integer `N`. The report lists each run in `runs`, w
 
 - Recall is the share of material annotations that were judged material. The false-positive rate is the share of immaterial or unaffected annotations that were judged material. A zero denominator is JSON `null`. Each run takes the arithmetic mean over the applicable cases for each rate and lists excluded cases by metric.
 - Failed or paused cases remain in the denominator, with zero material judgments counted. The original result and gaps remain in the case record. The run separately lists incomplete case IDs.
-- Timing and cost totals sum the values from the review results. A missing component makes that total unknown. Estimated amount per correctly detected material item is the total estimated amount divided by the number of correctly detected material items. Unknown amounts and zero correct items give JSON `null`. Medians use applicable numeric values.
+- The runner measures wall time around each adapter call and sums it over cases. The model supplies its own elapsed time. The command summary separately includes elapsed time through the completed report write, including setup, all runs and report writing. Cost totals sum the values from the review results. A missing component makes that total unknown. Estimated amount per correctly detected material item is the total estimated amount divided by the number of correctly detected material items. Unknown amounts and zero correct items give JSON `null`. Medians use applicable numeric values.
 - `disagreement` gives the fraction of a case's annotated items whose effective judgment varies across runs. An absent proposal counts as unaffected. A failed or paused run contributes only unaffected judgments. With one run or no annotated items the rate is JSON `null`.
 
 ## Compare reports and configure the advisory summary
@@ -70,6 +70,14 @@ Both thresholds accept values between 0 and 1. The first is an absolute recall
 difference and the second is a candidate-to-baseline cost ratio. The comparison
 shows the aggregate values and signed B-minus-A deltas. Reports with different
 gold-set hashes are marked incomparable and their deltas are suppressed.
+
+For an advisory against a measured ledger system, pass its JSON report to
+`eval run --system regenerate --reference-report ledger-report.json`. The
+gold set, harness, profile, model and pricing versions must agree. When recall
+and total estimated cost are known for both systems, the summary suggests
+considering a ledger that only provides locations if the opponent's recall is
+within tolerance or higher and its cost is lower and within the configured
+ratio. The suggestion leaves the decision to the reader.
 
 ## Regenerate comparison system
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
 from threading import Thread
-from time import monotonic
+from time import perf_counter
 from typing import Any, Callable, Literal, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -151,7 +151,7 @@ class ModelClient:
     ) -> None:
         self.config = config
         self._transport = transport
-        self._clock = clock if clock is not None else monotonic
+        self._clock = clock if clock is not None else perf_counter
 
     def _call(self, method: str, path: str, payload: dict | None, timeout: float) -> dict:
         headers = {"Authorization": f"Bearer {self.config.api_key}"}
@@ -268,8 +268,8 @@ class BudgetSession:
         self._terminal = Generation("paused", reason=reason, gaps=gaps, checkpoint=path)
         return self._terminal
 
-    def _fail(self, reason: str) -> Generation:
-        self._terminal = Generation("failed", reason=reason)
+    def _fail(self, reason: str, gaps: tuple[str, ...]) -> Generation:
+        self._terminal = Generation("failed", reason=reason, gaps=gaps)
         return self._terminal
 
     def _record_usage(self, response: dict, started: float) -> bool:
@@ -333,12 +333,12 @@ class BudgetSession:
                 return self._pause("wall clock budget exhausted", gaps)
             except (EndpointError, OSError, ValueError) as error:
                 self._record_usage({}, started)
-                return self._fail(f"Model request failed: {error}")
+                return self._fail(f"Model request failed: {error}", gaps)
             usage_reported = self._record_usage(response, started)
             if self._client._clock() >= self._deadline:
                 return self._pause("wall clock budget exhausted", gaps)
             if not usage_reported:
-                return self._fail("Model response lacks valid token usage")
+                return self._fail("Model response lacks valid token usage", gaps)
             if self._input_tokens + self._output_tokens > self._max_tokens:
                 return self._pause("token budget exhausted", gaps)
 
@@ -348,7 +348,7 @@ class BudgetSession:
                 validator.validate(value)
             except (IndexError, KeyError, TypeError, ValueError, ValidationError):
                 if attempt + 1 == max_attempts:
-                    return self._fail("Model response did not match JSON Schema")
+                    return self._fail("Model response did not match JSON Schema", gaps)
                 messages = [{
                     "role": "user",
                     "content": "The previous output was invalid. Follow the schema exactly.\n" + instructions,

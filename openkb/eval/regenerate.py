@@ -8,11 +8,13 @@ from time import perf_counter
 
 from openkb.agent.model import BudgetSession, Generation, ModelClient
 
-from .contract import ArtifactItem, Cost, EvidenceReference, Proposal, ReviewRequest, ReviewResult, Timing
+from .contract import (
+    DEFAULT_ARTIFACT_SECTION, ArtifactItem, Cost, EvidenceReference, Proposal,
+    ReviewRequest, ReviewResult, Timing,
+)
 
 
 REGENERATE_NOTE = "小语料可整读：regenerate 读取完整变更后资料，无需检索，这使对手基线处于有利条件。"
-_UNSECTIONED = "未分节"
 _JUDGMENTS = ["material", "immaterial", "not_affected"]
 _EVIDENCE_KEYS = ("document_id", "version_id", "block_key")
 _EVIDENCE_SCHEMA = {
@@ -53,11 +55,11 @@ class _Slot:
 
 
 def _layout(artifact: tuple[ArtifactItem, ...]) -> tuple[_Slot, ...]:
-    occupied = {(item.section or _UNSECTIONED, item.ordinal) for item in artifact}
+    occupied = {(item.section or DEFAULT_ARTIFACT_SECTION, item.ordinal) for item in artifact}
     next_ordinal = defaultdict(lambda: 1)
     slots = []
     for item in artifact:
-        section = item.section or _UNSECTIONED
+        section = item.section or DEFAULT_ARTIFACT_SECTION
         ordinal = item.ordinal
         if ordinal is None:
             ordinal = next_ordinal[section]

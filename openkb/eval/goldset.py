@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .contract import ArtifactItem, Block, Budget, Corpus, Document, ReviewRequest, Version
+from .contract import (
+    DEFAULT_ARTIFACT_SECTION, ArtifactItem, Block, Budget, Corpus, Document, ReviewRequest, Version,
+)
 
 
 @dataclass(frozen=True)
@@ -97,13 +99,36 @@ def _validate_evidence(
             raise ValueError(f"{location}: evidence points outside the expected snapshot")
 
 
+def _artifact_ids(artifact: tuple[ArtifactItem, ...], location: str) -> set[str]:
+    item_ids = set()
+    occupied_slots = set()
+    for item in artifact:
+        if item.item_id in item_ids:
+            raise ValueError(f"{location}: duplicate artifact item_id")
+        item_ids.add(item.item_id)
+
+        if item.section is not None and (not isinstance(item.section, str) or not item.section.strip()):
+            raise ValueError(f"{location}, item {item.item_id!r}: section must be non-empty")
+        if item.ordinal is None:
+            continue
+        if type(item.ordinal) is not int or item.ordinal < 1:
+            raise ValueError(f"{location}, item {item.item_id!r}: ordinal must be a positive integer")
+        slot = item.section or DEFAULT_ARTIFACT_SECTION, item.ordinal
+        if slot in occupied_slots:
+            raise ValueError(f"{location}: duplicate artifact section and ordinal {slot!r}")
+        occupied_slots.add(slot)
+    return item_ids
+
+
 def _validate_annotations(
-    case_id: str, request: ReviewRequest, annotations: list[dict[str, object]],
+    case_id: str,
+    request: ReviewRequest,
+    annotations: list[dict[str, object]],
+    *,
+    require_provenance: bool,
 ) -> None:
     location = f"case {case_id!r}"
-    artifact_ids = {item.item_id for item in request.artifact}
-    if len(artifact_ids) != len(request.artifact):
-        raise ValueError(f"{location}: duplicate artifact item_id")
+    artifact_ids = _artifact_ids(request.artifact, location)
     if not isinstance(annotations, list):
         raise ValueError(f"{location}: annotations must be an array")
 
@@ -125,14 +150,16 @@ def _validate_annotations(
             raise ValueError(f"{item_location}: invalid judgment {judgment!r}")
 
         has_provenance = "baseline_claim_ids" in annotation or "baseline_evidence" in annotation
-        if has_provenance:
+        if require_provenance or has_provenance:
             claims = annotation.get("baseline_claim_ids")
             if not isinstance(claims, list) or not claims or any(
                 not isinstance(claim, str) or not claim.strip() for claim in claims
             ):
                 raise ValueError(f"{item_location}: baseline_claim_ids must contain claim IDs")
             _validate_evidence(annotation.get("baseline_evidence"), before, f"{item_location} baseline")
-        if judgment == "material" and (has_provenance or "revised_text" in annotation or "evidence" in annotation):
+        if judgment == "material" and (
+            require_provenance or has_provenance or "revised_text" in annotation or "evidence" in annotation
+        ):
             revision = annotation.get("revised_text")
             if not isinstance(revision, str) or not revision.strip():
                 raise ValueError(f"{item_location}: material annotations require revised_text")
@@ -147,6 +174,11 @@ def load_goldset(path: Path) -> GoldSet:
     """Decode all cases before evaluating any system."""
     source = path.read_bytes()
     data = json.loads(source)
+    if not isinstance(data, dict):
+        raise ValueError("Gold set must be a JSON object")
+    format_version = data.get("format_version", 0)
+    if type(format_version) is not int or format_version not in (0, 1):
+        raise ValueError(f"Unsupported gold-set format_version {format_version!r}")
     profile_version = data["profile_version"]
     if not isinstance(profile_version, str) or not profile_version.strip():
         raise ValueError("profile_version must be a non-empty string")
@@ -171,6 +203,6 @@ def load_goldset(path: Path) -> GoldSet:
         )
         annotations = case["annotations"]
         _validate_revision(request.corpus, case_id)
-        _validate_annotations(case_id, request, annotations)
+        _validate_annotations(case_id, request, annotations, require_provenance=format_version == 1)
         cases.append(GoldCase(case_id, request, tuple(annotations)))
     return GoldSet(profile_version, hashlib.sha256(source).hexdigest(), tuple(cases))

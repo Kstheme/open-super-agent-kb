@@ -1,10 +1,17 @@
 import json
+from dataclasses import replace
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from openkb.eval.contract import Timing
+from openkb.eval.metrics import MetricCost, Metrics
+from openkb.eval.presentation import render_run_summary
+from openkb.eval.report import RunReport
+from openkb.eval.thresholds import EvalThresholds
 
 from test_eval_cli import ROOT, goldset
 
@@ -85,6 +92,26 @@ class ReportCliTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("profile_version", completed.stderr)
 
+    def test_run_advice_uses_the_active_recall_and_cost_thresholds(self):
+        report = RunReport(
+            harness_version="1", goldset_hash="same", system="regenerate",
+            model_id="fixture", profile_version="notice-v1", price_table_version="prices-v1",
+            cases=(),
+            aggregate=Metrics(0.86, 0.0, Timing(1, 2), MetricCost(0, 0, 0.6, None)),
+            thresholds=EvalThresholds(0.05, 0.6),
+        )
+        reference = json.loads(report.to_json())
+        reference["system"] = "ledger"
+        reference["aggregate"]["recall"] = 0.90
+        reference["aggregate"]["cost"]["estimated_amount"] = 1.00
+        self.assertIn("只提供定位", render_run_summary(report, reference=reference))
+        for thresholds in (EvalThresholds(0.02, 0.6), EvalThresholds(0.05, 0.5)):
+            with self.subTest(thresholds=thresholds):
+                tighter = replace(report, thresholds=thresholds)
+                self.assertNotIn("只提供定位", render_run_summary(tighter, reference=reference))
+        reference["price_table_version"] = "other"
+        self.assertIn("不可比", render_run_summary(report, reference=reference))
+
     def test_run_echoes_actual_thresholds_and_excluded_cases(self):
         config = self.directory / "config.toml"
         config.write_text(
@@ -99,5 +126,7 @@ class ReportCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         report = json.loads(report_path.read_text(encoding="utf-8"))
         self.assertEqual(report["thresholds"], {"recall_tolerance": 0.125, "cheaper_cost_ratio": 0.6})
-        for expected in ("notice-v1", report["goldset_hash"], "0.125", "0.6", "建议性", "control"):
+        for expected in (
+            "notice-v1", report["goldset_hash"], "0.125", "0.6", "建议性", "control", "命令墙钟时间",
+        ):
             self.assertIn(expected, completed.stdout)

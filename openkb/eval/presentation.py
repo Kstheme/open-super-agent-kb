@@ -62,7 +62,40 @@ def compare_reports(report_a: dict, report_b: dict) -> str:
     return "\n".join(lines)
 
 
-def render_run_summary(report: RunReport) -> str:
+def _advice(report: RunReport, reference: dict | None) -> str:
+    if report.system == "noop":
+        return "本次为 M0 零提案基线，用于校验评测链路。"
+    if report.system != "regenerate" or reference is None:
+        return "用同一 gold set 的对照报告核对召回与成本后，由人决定取舍。"
+
+    version_fields = ("harness_version", "goldset_hash", "profile_version", "model_id", "price_table_version")
+    if reference["system"] in ("noop", "regenerate") or any(
+        reference[field] != getattr(report, field) for field in version_fields
+    ):
+        return "对照系统或版本不匹配，结果不可比。"
+
+    if report.aggregate is None or report.aggregate.recall is None:
+        return "缺少可比较的召回率或成本，由人复核对照结果。"
+
+    try:
+        baseline_recall = _metric_value(reference.get("aggregate"), ("recall",))
+        baseline_cost = _metric_value(reference.get("aggregate"), ("cost", "estimated_amount"))
+    except ValueError:
+        return "对照报告缺少有效的召回率或成本，由人复核对照结果。"
+
+    opponent_cost = report.aggregate.cost.estimated_amount
+    if baseline_recall is None or baseline_cost is None or opponent_cost is None:
+        return "缺少可比较的召回率或成本，由人复核对照结果。"
+
+    thresholds = report.thresholds
+    close_recall = report.aggregate.recall >= baseline_recall - thresholds.recall_tolerance
+    lower_cost = opponent_cost < baseline_cost and opponent_cost <= baseline_cost * thresholds.cheaper_cost_ratio
+    if close_recall and lower_cost:
+        return "对手达到召回率与低成本阈值，可考虑让账本只提供定位。最终取舍由人决定。"
+    return "对手未同时达到召回率和低成本阈值，由人复核对照结果。"
+
+
+def render_run_summary(report: RunReport, *, reference: dict | None = None) -> str:
     thresholds = report.thresholds
     lines = [
         f"M0 · system={report.system} · model_id={report.model_id or '不适用'}",
@@ -85,8 +118,5 @@ def render_run_summary(report: RunReport) -> str:
         if run.incomplete_cases:
             lines.append(f"运行 {index} · 未完成 · {', '.join(run.incomplete_cases)}")
 
-    if report.system == "noop":
-        lines.append("建议性结论 · 本次为 M0 零提案基线，用于校验评测链路。")
-    else:
-        lines.append("建议性结论 · 用同一 gold set 的对照报告核对召回与成本后，由人决定取舍。")
+    lines.append(f"建议性结论 · {_advice(report, reference)}")
     return "\n".join(lines)

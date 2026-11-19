@@ -29,6 +29,34 @@ class GoldSetValidationTests(unittest.TestCase):
                     load_goldset(source)
 
 
+    def test_explicit_artifact_slots_must_be_unique_and_positive(self):
+        for reason, ordinal in (("duplicate", 1), ("positive integer", 0), ("positive integer", True)):
+            with self.subTest(ordinal=ordinal), tempfile.TemporaryDirectory() as tmp:
+                data = goldset()
+                case = data["cases"][0]
+                case["artifact"][0].update(section="notices", ordinal=1)
+                case["artifact"].append({
+                    "item_id": "channel", "snapshot_text": "written",
+                    "section": "notices", "ordinal": ordinal,
+                })
+                case["annotations"].append({"item_id": "channel", "judgment": "not_affected"})
+                source = Path(tmp) / "cases.json"
+                source.write_text(json.dumps(data), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, reason):
+                    load_goldset(source)
+
+    def test_versioned_annotations_require_provenance_even_if_both_keys_were_removed(self):
+        published = Path(__file__).resolve().parents[1] / "goldsets" / "m0-compliance.json"
+        data = json.loads(published.read_text(encoding="utf-8"))
+        annotation = data["cases"][0]["annotations"][0]
+        del annotation["baseline_claim_ids"]
+        del annotation["baseline_evidence"]
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "cases.json"
+            source.write_text(json.dumps(data), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "baseline_claim_ids"):
+                load_goldset(source)
+
     def test_changed_blocks_cannot_reuse_the_same_version_id(self):
         data = goldset()
         data["cases"][0]["corpus"]["after"][0]["version"]["version_id"] = "v1"

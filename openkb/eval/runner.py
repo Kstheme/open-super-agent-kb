@@ -1,3 +1,4 @@
+from dataclasses import replace
 from time import perf_counter
 
 from .contract import Cost, ReviewRequest, ReviewResult, ReviewSystem, Timing
@@ -12,7 +13,7 @@ HARNESS_VERSION = "1"
 def _review_case(system: ReviewSystem, request: ReviewRequest) -> ReviewResult:
     started = perf_counter()
     try:
-        return system.review(request)
+        result = system.review(request)
     except Exception as error:
         return ReviewResult(
             proposals=(),
@@ -22,6 +23,9 @@ def _review_case(system: ReviewSystem, request: ReviewRequest) -> ReviewResult:
             used_ledger=False,
             error=f"{type(error).__name__}: {error}",
         )
+    elapsed = perf_counter() - started
+    model_seconds = result.timing.model_seconds
+    return replace(result, timing=Timing(model_seconds, max(elapsed, model_seconds or 0.0)))
 
 
 def _run_once(goldset: GoldSet, system: ReviewSystem) -> RunSummary:

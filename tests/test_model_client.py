@@ -134,6 +134,7 @@ class ModelClientTests(unittest.TestCase):
         result = self.session().generate("Try", SCHEMA, gaps=("answer",))
         self.assertEqual(result.state, "failed")
         self.assertIn("JSON Schema", result.reason)
+        self.assertEqual(result.gaps, ("answer",))
         self.assertEqual(len(self.requests), 3)
 
 

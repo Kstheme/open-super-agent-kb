@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import Literal, Mapping, Protocol
 
 
+DEFAULT_ARTIFACT_SECTION = "未分节"
+
+
 @dataclass(frozen=True)
 class Block:
     block_key: str
