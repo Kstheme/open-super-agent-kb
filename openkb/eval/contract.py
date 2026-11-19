@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import Literal, Mapping, Protocol
 
 
+DEFAULT_ARTIFACT_SECTION = "未分节"
+
+
 @dataclass(frozen=True)
 class Block:
     block_key: str
@@ -34,6 +37,8 @@ class Corpus:
 class ArtifactItem:
     item_id: str
     snapshot_text: str
+    section: str | None = None
+    ordinal: int | None = None
 
 
 @dataclass(frozen=True)
