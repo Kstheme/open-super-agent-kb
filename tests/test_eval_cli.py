@@ -97,7 +97,7 @@ class EvalCliTests(unittest.TestCase):
         source.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         installed_cli = os.environ.get("OPENKB_TEST_CLI")
         command = [installed_cli] if installed_cli else [sys.executable, "-m", "openkb.server.cli"]
-        env = os.environ.copy()
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
         if not installed_cli:
             env["PYTHONPATH"] = str(ROOT)
         return subprocess.run(

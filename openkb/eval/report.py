@@ -4,6 +4,7 @@ from typing import Mapping
 
 from .contract import ReviewResult
 from .metrics import CaseMetrics, Metrics
+from .thresholds import EvalThresholds
 
 
 def validate_report_versions(report: Mapping[str, object]) -> None:
@@ -48,6 +49,7 @@ class RunReport:
     aggregate: Metrics | None = None
     runs: tuple[RunSummary, ...] = ()
     disagreement: dict[str, float | None] = field(default_factory=dict)
+    thresholds: EvalThresholds = field(default_factory=EvalThresholds)
 
     def to_json(self) -> str:
         report = asdict(self)

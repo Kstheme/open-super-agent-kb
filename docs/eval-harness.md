@@ -36,7 +36,7 @@ Before running any case, the loader checks block keys and document identity on b
 - Implement `openkb.eval.contract.ReviewSystem.review(request)` and return a `ReviewResult`. Proposals refer to stable artifact item IDs. An evidence reference locates a block by document, version, and block key. Cost carries token counts, an estimated amount, and the model ID. Timing is in seconds. Set `used_ledger` explicitly and use `gaps` or `error` to explain `paused` or `failed` results.
 - Use `load_goldset(Path(...))` and `run_goldset(goldset, system, system_name=..., price_table_version=...)` to run one pass. The runner hands adapters `ReviewRequest` values. It records an adapter exception as a failed case with its error and continues. If an adapter throws after receiving a ledger, its ledger use is unverified and the fallback result carries `used_ledger: false`. Annotations remain available as `GoldCase.annotations` for scoring and test calibration.
 - `RunReport.to_json()` serializes ordered `cases` as `{case_id, result}` records. Each result includes proposals, state, gaps, error, ledger use, timing, and cost. The report uses a single model ID from the case results. The version keys `harness_version`, `goldset_hash`, `system`, `model_id`, `profile_version`, and `price_table_version` are mandatory. `model_id` and `price_table_version` permit JSON `null` when unavailable or inapplicable, as does `cost.estimated_amount`. Use `validate_report_versions` on decoded reports before comparison.
-- The runner scores each review against the case annotations. Issue #7 adds comparison and summaries. Issue #8 can inject a test adapter through the same runner. P1 owns the public representation of the section and ordinal that #6 needs for alignment.
+- The runner scores each review against the case annotations. Issue #8 can inject a test adapter through the same runner. P1 owns the public representation of the section and ordinal that #6 needs for alignment.
 
 ## Metrics and repeated runs
 
@@ -46,3 +46,27 @@ Pass `--runs N` for positive integer `N`. The report lists each run in `runs`, w
 - Failed or paused cases remain in the denominator, with zero material judgments counted. The original result and gaps remain in the case record. The run separately lists incomplete case IDs.
 - Timing and cost totals sum the values from the review results. A missing component makes that total unknown. Estimated amount per correctly detected material item is the total estimated amount divided by the number of correctly detected material items. Unknown amounts and zero correct items give JSON `null`. Medians use applicable numeric values.
 - `disagreement` gives the fraction of a case's annotated items whose effective judgment varies across runs. An absent proposal counts as unaffected. A failed or paused run contributes only unaffected judgments. With one run or no annotated items the rate is JSON `null`.
+
+## Compare reports and configure the advisory summary
+
+```sh
+openkb eval run --goldset goldset.json --out baseline.json
+openkb eval compare --report-a baseline.json --report-b candidate.json
+```
+
+The run summary lists the actual thresholds, report versions, excluded cases, and
+an advisory conclusion. The JSON report includes the same thresholds under
+`thresholds`. With no matching configuration, `recall_tolerance` defaults to
+`0.05` and `cheaper_cost_ratio` defaults to `0.8`. Override either value in
+`~/.openkb/config.toml` or a file passed to `--config`.
+
+```toml
+[eval.thresholds]
+recall_tolerance = 0.05
+cheaper_cost_ratio = 0.8
+```
+
+Both thresholds accept values between 0 and 1. The first is an absolute recall
+difference and the second is a candidate-to-baseline cost ratio. The comparison
+shows the aggregate values and signed B-minus-A deltas. Reports with different
+gold-set hashes are marked incomparable and their deltas are suppressed.
