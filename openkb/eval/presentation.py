@@ -16,10 +16,16 @@ _METRICS = (
     ("估算金额", ("cost", "estimated_amount")),
     ("每条正确检出的估算金额", ("cost", "amount_per_correct_item")),
 )
+_TOKEN_METRICS = {("cost", "input_tokens"), ("cost", "output_tokens")}
 
 
-def _number(value: int | float | None) -> str:
-    return "不适用" if value is None else f"{value:.6g}"
+def _number(value: int | float | None, *, exact: bool, signed: bool = False) -> str:
+    if value is None:
+        return "不适用"
+    sign = "+" if signed else ""
+    if exact:
+        return format(value, sign).removesuffix(".0")
+    return format(value, f"{sign}.6g")
 
 
 def _metric_value(aggregate: object, path: tuple[str, ...]) -> int | float | None:
@@ -57,8 +63,12 @@ def compare_reports(report_a: dict, report_b: dict) -> str:
     for label, path in _METRICS:
         a = _metric_value(report_a.get("aggregate"), path)
         b = _metric_value(report_b.get("aggregate"), path)
-        delta = f"{b - a:+.6g}" if comparable and a is not None and b is not None else "不适用"
-        lines.append(f"{label} | {_number(a)} | {_number(b)} | {delta}")
+        exact = path in _TOKEN_METRICS
+        delta = b - a if comparable and a is not None and b is not None else None
+        lines.append(
+            f"{label} | {_number(a, exact=exact)} | {_number(b, exact=exact)}"
+            f" | {_number(delta, exact=exact, signed=True)}"
+        )
     return "\n".join(lines)
 
 
@@ -108,7 +118,8 @@ def render_run_summary(report: RunReport, *, reference: dict | None = None) -> s
     if report.aggregate is not None:
         aggregate = asdict(report.aggregate)
         lines.extend(
-            f"{label} = {_number(_metric_value(aggregate, path))}" for label, path in _METRICS
+            f"{label} = {_number(_metric_value(aggregate, path), exact=path in _TOKEN_METRICS)}"
+            for label, path in _METRICS
         )
 
     for index, run in enumerate(report.runs, start=1):
