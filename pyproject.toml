@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openkb"
+version = "0.0.1"
+requires-python = ">=3.10"
+description = "Local knowledge base and review evaluation harness"
+
+[project.scripts]
+openkb = "openkb.server.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["openkb*"]
