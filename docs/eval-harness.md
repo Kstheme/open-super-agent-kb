@@ -3,7 +3,7 @@
 Install the package with `python -m pip install .`, then run a UTF-8 gold-set JSON file:
 
 ```sh
-openkb eval run --goldset goldset.json --system noop --out report.json
+openkb eval run --goldset goldsets/m0-compliance.json --system noop --out report.json
 ```
 
 The default system is `noop`, and the default destination is `report.json` in the working directory.
@@ -22,10 +22,14 @@ The JSON root contains `profile_version` (an identifier for the declaration temp
 | `artifact` | Array of items with stable `item_id` and `snapshot_text` |
 | `goal` | String |
 | `budget` | `max_steps`, `max_tokens`, `max_wall_seconds` |
-| `annotations` | Array of objects keyed by `item_id` and `judgment` (`material`, `immaterial`, or `not_affected`). Additional annotation fields are retained for #3. |
+| `annotations` | Array of objects keyed by `item_id` and `judgment` (`material`, `immaterial`, or `not_affected`). The published gold set also records baseline claim and evidence references, plus the expected revision and its evidence for material annotations. |
 | `ledger` | Optional object representing a ledger view |
 
-The loader checks `block_key` for every block on both sides before running any case. See the [two-case test input](../tests/test_eval_cli.py) for a concrete example. Issue #3 supplies the corpus and checks annotation coverage, uniqueness, and revision consistency.
+The [published M0 gold set](../goldsets/m0-compliance.json) contains 24 annotations for five independent synthetic Chinese policy revisions and an unchanged control. It includes a lodging-limit table, cross-clause references in purchase and training rules, and a meeting-minutes revision that changes wording while preserving policy meaning.
+
+Each published annotation has stable synthetic claim identifiers in `baseline_claim_ids` and references to blocks from the before snapshot in `baseline_evidence`. Material annotations also have `revised_text` and after-snapshot `evidence`. Each reference uses `document_id`, `version_id`, and `block_key`, matching the M0 review port. Minimal existing inputs can still provide just `item_id` and `judgment`.
+
+Before running any case, the loader checks block keys and document identity on both sides. A document must keep identical blocks when the same version ID appears on both sides. The loader rejects unknown or duplicate annotation item IDs, missing annotations, invalid judgments, and evidence references outside the corresponding snapshot.
 
 ## Adapter and report boundaries
 

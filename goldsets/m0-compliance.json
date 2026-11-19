@@ -1,0 +1,921 @@
+{
+  "profile_version": "synthetic-compliance-checklist-v1",
+  "cases": [
+    {
+      "case_id": "travel-expense",
+      "goal": "维护差旅费用报销检查清单",
+      "budget": {
+        "max_steps": 4,
+        "max_tokens": 12000,
+        "max_wall_seconds": 90
+      },
+      "corpus": {
+        "before": [
+          {
+            "document_id": "travel-expense",
+            "version": {
+              "version_id": "v1",
+              "blocks": [
+                {
+                  "block_key": "travel-expense/1/1fc21919be0e2251",
+                  "heading_path": ["差旅报销办法", "提交时限"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 23,
+                  "text": "第一条 出差结束后须在10个工作日内提交报销。"
+                },
+                {
+                  "block_key": "travel-expense/2/e5fbc9fae6a12cd1",
+                  "heading_path": ["差旅报销办法", "住宿标准"],
+                  "ordinal": 2,
+                  "start_offset": 24,
+                  "end_offset": 76,
+                  "text": "第二条 每晚住宿限额如下。\n| 地区 | 限额 |\n|---|---:|\n| 一类城市 | 500元 |"
+                },
+                {
+                  "block_key": "travel-expense/3/846a559159e36126",
+                  "heading_path": ["差旅报销办法", "原始凭证"],
+                  "ordinal": 3,
+                  "start_offset": 77,
+                  "end_offset": 93,
+                  "text": "第三条 报销须附发票和行程记录。"
+                },
+                {
+                  "block_key": "travel-expense/4/d39531ffce4af407",
+                  "heading_path": ["差旅报销办法", "支付账户"],
+                  "ordinal": 4,
+                  "start_offset": 94,
+                  "end_offset": 114,
+                  "text": "第四条 报销款项汇入员工登记的工资账户。"
+                }
+              ]
+            }
+          }
+        ],
+        "after": [
+          {
+            "document_id": "travel-expense",
+            "version": {
+              "version_id": "v2",
+              "blocks": [
+                {
+                  "block_key": "travel-expense/1/45451d4600727947",
+                  "heading_path": ["差旅报销办法", "提交时限"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 23,
+                  "text": "第一条 出差结束后须在15个工作日内提交报销。"
+                },
+                {
+                  "block_key": "travel-expense/2/c770430d13e1e05c",
+                  "heading_path": ["差旅报销办法", "住宿标准"],
+                  "ordinal": 2,
+                  "start_offset": 24,
+                  "end_offset": 76,
+                  "text": "第二条 每晚住宿限额如下。\n| 地区 | 限额 |\n|---|---:|\n| 一类城市 | 600元 |"
+                },
+                {
+                  "block_key": "travel-expense/3/846a559159e36126",
+                  "heading_path": ["差旅报销办法", "原始凭证"],
+                  "ordinal": 3,
+                  "start_offset": 77,
+                  "end_offset": 93,
+                  "text": "第三条 报销须附发票和行程记录。"
+                },
+                {
+                  "block_key": "travel-expense/4/d39531ffce4af407",
+                  "heading_path": ["差旅报销办法", "支付账户"],
+                  "ordinal": 4,
+                  "start_offset": 94,
+                  "end_offset": 114,
+                  "text": "第四条 报销款项汇入员工登记的工资账户。"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "artifact": [
+        {
+          "item_id": "claim-deadline",
+          "snapshot_text": "出差结束后10个工作日内提交报销。"
+        },
+        {
+          "item_id": "lodging-cap",
+          "snapshot_text": "一类城市限额为每晚500元。"
+        },
+        {
+          "item_id": "receipt-required",
+          "snapshot_text": "发票和行程记录均须随报销提交。"
+        },
+        {
+          "item_id": "payroll-account",
+          "snapshot_text": "报销款汇入员工登记的工资账户。"
+        }
+      ],
+      "annotations": [
+        {
+          "item_id": "claim-deadline",
+          "judgment": "material",
+          "baseline_claim_ids": ["travel-expense/claim/1"],
+          "baseline_evidence": [
+            {"document_id": "travel-expense", "version_id": "v1", "block_key": "travel-expense/1/1fc21919be0e2251"}
+          ],
+          "revised_text": "出差结束后15个工作日内提交报销。",
+          "evidence": [
+            {"document_id": "travel-expense", "version_id": "v2", "block_key": "travel-expense/1/45451d4600727947"}
+          ]
+        },
+        {
+          "item_id": "lodging-cap",
+          "judgment": "material",
+          "baseline_claim_ids": ["travel-expense/claim/2"],
+          "baseline_evidence": [
+            {"document_id": "travel-expense", "version_id": "v1", "block_key": "travel-expense/2/e5fbc9fae6a12cd1"}
+          ],
+          "revised_text": "一类城市限额为每晚600元。",
+          "evidence": [
+            {"document_id": "travel-expense", "version_id": "v2", "block_key": "travel-expense/2/c770430d13e1e05c"}
+          ]
+        },
+        {
+          "item_id": "receipt-required",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["travel-expense/claim/3"],
+          "baseline_evidence": [
+            {"document_id": "travel-expense", "version_id": "v1", "block_key": "travel-expense/3/846a559159e36126"}
+          ]
+        },
+        {
+          "item_id": "payroll-account",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["travel-expense/claim/4"],
+          "baseline_evidence": [
+            {"document_id": "travel-expense", "version_id": "v1", "block_key": "travel-expense/4/d39531ffce4af407"}
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "purchase-approval",
+      "goal": "维护办公采购审批与验收清单",
+      "budget": {
+        "max_steps": 4,
+        "max_tokens": 12000,
+        "max_wall_seconds": 90
+      },
+      "corpus": {
+        "before": [
+          {
+            "document_id": "purchase-approval",
+            "version": {
+              "version_id": "v1",
+              "blocks": [
+                {
+                  "block_key": "purchase-approval/1/bd32c165fb21a7da",
+                  "heading_path": ["办公采购管理办法", "集中采购"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 31,
+                  "text": "第一条 达到第三条规定金额的办公采购，须先取得采购委员会批准。"
+                },
+                {
+                  "block_key": "purchase-approval/2/92c6a26a2a729c15",
+                  "heading_path": ["办公采购管理办法", "供应商报价"],
+                  "ordinal": 2,
+                  "start_offset": 32,
+                  "end_offset": 56,
+                  "text": "第二条 集中采购须取得至少三家供应商的书面报价。"
+                },
+                {
+                  "block_key": "purchase-approval/3/1d8aecff6c3e7b4d",
+                  "heading_path": ["办公采购管理办法", "金额标准"],
+                  "ordinal": 3,
+                  "start_offset": 57,
+                  "end_offset": 81,
+                  "text": "第三条 集中采购的起始金额为含税20,000元。"
+                },
+                {
+                  "block_key": "purchase-approval/4/cba025df4a4bce5f",
+                  "heading_path": ["办公采购管理办法", "验收记录"],
+                  "ordinal": 4,
+                  "start_offset": 82,
+                  "end_offset": 106,
+                  "text": "第四条 办公采购完成后，由申请部门签署验收记录。"
+                }
+              ]
+            }
+          }
+        ],
+        "after": [
+          {
+            "document_id": "purchase-approval",
+            "version": {
+              "version_id": "v2",
+              "blocks": [
+                {
+                  "block_key": "purchase-approval/1/bd32c165fb21a7da",
+                  "heading_path": ["办公采购管理办法", "集中采购"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 31,
+                  "text": "第一条 达到第三条规定金额的办公采购，须先取得采购委员会批准。"
+                },
+                {
+                  "block_key": "purchase-approval/2/92c6a26a2a729c15",
+                  "heading_path": ["办公采购管理办法", "供应商报价"],
+                  "ordinal": 2,
+                  "start_offset": 32,
+                  "end_offset": 56,
+                  "text": "第二条 集中采购须取得至少三家供应商的书面报价。"
+                },
+                {
+                  "block_key": "purchase-approval/3/49f5490641c990e7",
+                  "heading_path": ["办公采购管理办法", "金额标准"],
+                  "ordinal": 3,
+                  "start_offset": 57,
+                  "end_offset": 81,
+                  "text": "第三条 集中采购的起始金额为含税30,000元。"
+                },
+                {
+                  "block_key": "purchase-approval/4/cba025df4a4bce5f",
+                  "heading_path": ["办公采购管理办法", "验收记录"],
+                  "ordinal": 4,
+                  "start_offset": 82,
+                  "end_offset": 106,
+                  "text": "第四条 办公采购完成后，由申请部门签署验收记录。"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "artifact": [
+        {
+          "item_id": "committee-approval",
+          "snapshot_text": "含税金额达到20,000元的办公采购须预先取得采购委员会批准。"
+        },
+        {
+          "item_id": "quote-threshold",
+          "snapshot_text": "含税金额达到20,000元的办公采购须收集至少三家供应商的书面报价。"
+        },
+        {
+          "item_id": "quote-minimum",
+          "snapshot_text": "集中采购要求至少三家供应商提供书面报价。"
+        },
+        {
+          "item_id": "acceptance-owner",
+          "snapshot_text": "验收记录由申请部门签署。"
+        }
+      ],
+      "annotations": [
+        {
+          "item_id": "committee-approval",
+          "judgment": "material",
+          "baseline_claim_ids": ["purchase-approval/claim/1", "purchase-approval/claim/3"],
+          "baseline_evidence": [
+            {"document_id": "purchase-approval", "version_id": "v1", "block_key": "purchase-approval/1/bd32c165fb21a7da"},
+            {"document_id": "purchase-approval", "version_id": "v1", "block_key": "purchase-approval/3/1d8aecff6c3e7b4d"}
+          ],
+          "revised_text": "含税金额达到30,000元的办公采购须预先取得采购委员会批准。",
+          "evidence": [
+            {"document_id": "purchase-approval", "version_id": "v2", "block_key": "purchase-approval/1/bd32c165fb21a7da"},
+            {"document_id": "purchase-approval", "version_id": "v2", "block_key": "purchase-approval/3/49f5490641c990e7"}
+          ]
+        },
+        {
+          "item_id": "quote-threshold",
+          "judgment": "material",
+          "baseline_claim_ids": ["purchase-approval/claim/2", "purchase-approval/claim/3"],
+          "baseline_evidence": [
+            {"document_id": "purchase-approval", "version_id": "v1", "block_key": "purchase-approval/2/92c6a26a2a729c15"},
+            {"document_id": "purchase-approval", "version_id": "v1", "block_key": "purchase-approval/3/1d8aecff6c3e7b4d"}
+          ],
+          "revised_text": "含税金额达到30,000元的办公采购须收集至少三家供应商的书面报价。",
+          "evidence": [
+            {"document_id": "purchase-approval", "version_id": "v2", "block_key": "purchase-approval/2/92c6a26a2a729c15"},
+            {"document_id": "purchase-approval", "version_id": "v2", "block_key": "purchase-approval/3/49f5490641c990e7"}
+          ]
+        },
+        {
+          "item_id": "quote-minimum",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["purchase-approval/claim/2"],
+          "baseline_evidence": [
+            {"document_id": "purchase-approval", "version_id": "v1", "block_key": "purchase-approval/2/92c6a26a2a729c15"}
+          ]
+        },
+        {
+          "item_id": "acceptance-owner",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["purchase-approval/claim/4"],
+          "baseline_evidence": [
+            {"document_id": "purchase-approval", "version_id": "v1", "block_key": "purchase-approval/4/cba025df4a4bce5f"}
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "archive-access",
+      "goal": "维护电子档案权限复核清单",
+      "budget": {
+        "max_steps": 4,
+        "max_tokens": 12000,
+        "max_wall_seconds": 90
+      },
+      "corpus": {
+        "before": [
+          {
+            "document_id": "archive-access",
+            "version": {
+              "version_id": "v1",
+              "blocks": [
+                {
+                  "block_key": "archive-access/1/ffb90e55116503ae",
+                  "heading_path": ["电子档案访问管理规定", "审批职责"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 20,
+                  "text": "第一条 业务负责人审批电子档案访问申请。"
+                },
+                {
+                  "block_key": "archive-access/2/9c28ddd627f1bdc3",
+                  "heading_path": ["电子档案访问管理规定", "权限回收"],
+                  "ordinal": 2,
+                  "start_offset": 21,
+                  "end_offset": 52,
+                  "text": "第二条 员工调离后，档案管理员应在3个工作日内撤销原岗位权限。"
+                },
+                {
+                  "block_key": "archive-access/3/f6f0d1bd9b5a5a30",
+                  "heading_path": ["电子档案访问管理规定", "权限复查"],
+                  "ordinal": 3,
+                  "start_offset": 53,
+                  "end_offset": 69,
+                  "text": "第三条 访问权限每季度复查一次。"
+                },
+                {
+                  "block_key": "archive-access/4/082f4bf1419c537b",
+                  "heading_path": ["电子档案访问管理规定", "访问记录"],
+                  "ordinal": 4,
+                  "start_offset": 70,
+                  "end_offset": 87,
+                  "text": "第四条 系统保存访问日志12个月。"
+                }
+              ]
+            }
+          }
+        ],
+        "after": [
+          {
+            "document_id": "archive-access",
+            "version": {
+              "version_id": "v2",
+              "blocks": [
+                {
+                  "block_key": "archive-access/1/ffb90e55116503ae",
+                  "heading_path": ["电子档案访问管理规定", "审批职责"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 20,
+                  "text": "第一条 业务负责人审批电子档案访问申请。"
+                },
+                {
+                  "block_key": "archive-access/2/5e07be564d6c4b9b",
+                  "heading_path": ["电子档案访问管理规定", "权限回收"],
+                  "ordinal": 2,
+                  "start_offset": 21,
+                  "end_offset": 52,
+                  "text": "第二条 员工调离后，档案管理员应在1个工作日内撤销原岗位权限。"
+                },
+                {
+                  "block_key": "archive-access/3/f6f0d1bd9b5a5a30",
+                  "heading_path": ["电子档案访问管理规定", "权限复查"],
+                  "ordinal": 3,
+                  "start_offset": 53,
+                  "end_offset": 69,
+                  "text": "第三条 访问权限每季度复查一次。"
+                },
+                {
+                  "block_key": "archive-access/4/082f4bf1419c537b",
+                  "heading_path": ["电子档案访问管理规定", "访问记录"],
+                  "ordinal": 4,
+                  "start_offset": 70,
+                  "end_offset": 87,
+                  "text": "第四条 系统保存访问日志12个月。"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "artifact": [
+        {
+          "item_id": "approval-owner",
+          "snapshot_text": "档案访问申请由业务负责人审批。"
+        },
+        {
+          "item_id": "revoke-window",
+          "snapshot_text": "员工调离后3个工作日内须撤销原岗位权限。"
+        },
+        {
+          "item_id": "review-period",
+          "snapshot_text": "电子档案访问权限每季度复查一次。"
+        },
+        {
+          "item_id": "log-retention",
+          "snapshot_text": "访问日志保留12个月。"
+        }
+      ],
+      "annotations": [
+        {
+          "item_id": "approval-owner",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["archive-access/claim/1"],
+          "baseline_evidence": [
+            {"document_id": "archive-access", "version_id": "v1", "block_key": "archive-access/1/ffb90e55116503ae"}
+          ]
+        },
+        {
+          "item_id": "revoke-window",
+          "judgment": "material",
+          "baseline_claim_ids": ["archive-access/claim/2"],
+          "baseline_evidence": [
+            {"document_id": "archive-access", "version_id": "v1", "block_key": "archive-access/2/9c28ddd627f1bdc3"}
+          ],
+          "revised_text": "员工调离后1个工作日内须撤销原岗位权限。",
+          "evidence": [
+            {"document_id": "archive-access", "version_id": "v2", "block_key": "archive-access/2/5e07be564d6c4b9b"}
+          ]
+        },
+        {
+          "item_id": "review-period",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["archive-access/claim/3"],
+          "baseline_evidence": [
+            {"document_id": "archive-access", "version_id": "v1", "block_key": "archive-access/3/f6f0d1bd9b5a5a30"}
+          ]
+        },
+        {
+          "item_id": "log-retention",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["archive-access/claim/4"],
+          "baseline_evidence": [
+            {"document_id": "archive-access", "version_id": "v1", "block_key": "archive-access/4/082f4bf1419c537b"}
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "training-renewal",
+      "goal": "维护岗位培训到期复核表",
+      "budget": {
+        "max_steps": 4,
+        "max_tokens": 12000,
+        "max_wall_seconds": 90
+      },
+      "corpus": {
+        "before": [
+          {
+            "document_id": "training-renewal",
+            "version": {
+              "version_id": "v1",
+              "blocks": [
+                {
+                  "block_key": "training-renewal/1/7d51db3d19048207",
+                  "heading_path": ["岗位培训管理规定", "适用对象"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 17,
+                  "text": "第一条 本规定适用于全体在岗员工。"
+                },
+                {
+                  "block_key": "training-renewal/2/5475d08ff2624d2a",
+                  "heading_path": ["岗位培训管理规定", "复训频次"],
+                  "ordinal": 2,
+                  "start_offset": 18,
+                  "end_offset": 42,
+                  "text": "第二条 在岗员工完成初训后，每24个月复训一次。"
+                },
+                {
+                  "block_key": "training-renewal/3/999a46d5cd0b0876",
+                  "heading_path": ["岗位培训管理规定", "到期提醒"],
+                  "ordinal": 3,
+                  "start_offset": 43,
+                  "end_offset": 76,
+                  "text": "第三条 培训管理员须依第二条计算到期日，并在到期前30日提醒员工。"
+                },
+                {
+                  "block_key": "training-renewal/4/8ad255a3dc8f9a3f",
+                  "heading_path": ["岗位培训管理规定", "凭证保留"],
+                  "ordinal": 4,
+                  "start_offset": 77,
+                  "end_offset": 92,
+                  "text": "第四条 培训完成凭证保存3年。"
+                }
+              ]
+            }
+          }
+        ],
+        "after": [
+          {
+            "document_id": "training-renewal",
+            "version": {
+              "version_id": "v2",
+              "blocks": [
+                {
+                  "block_key": "training-renewal/1/7d51db3d19048207",
+                  "heading_path": ["岗位培训管理规定", "适用对象"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 17,
+                  "text": "第一条 本规定适用于全体在岗员工。"
+                },
+                {
+                  "block_key": "training-renewal/2/922fc362a58b3fd5",
+                  "heading_path": ["岗位培训管理规定", "复训频次"],
+                  "ordinal": 2,
+                  "start_offset": 18,
+                  "end_offset": 42,
+                  "text": "第二条 在岗员工完成初训后，每12个月复训一次。"
+                },
+                {
+                  "block_key": "training-renewal/3/41079409b159a348",
+                  "heading_path": ["岗位培训管理规定", "到期提醒"],
+                  "ordinal": 3,
+                  "start_offset": 43,
+                  "end_offset": 76,
+                  "text": "第三条 培训管理员须依第二条计算到期日，并在到期前45日提醒员工。"
+                },
+                {
+                  "block_key": "training-renewal/4/8ad255a3dc8f9a3f",
+                  "heading_path": ["岗位培训管理规定", "凭证保留"],
+                  "ordinal": 4,
+                  "start_offset": 77,
+                  "end_offset": 92,
+                  "text": "第四条 培训完成凭证保存3年。"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "artifact": [
+        {
+          "item_id": "scope",
+          "snapshot_text": "岗位培训规定覆盖全体在岗员工。"
+        },
+        {
+          "item_id": "renewal-period",
+          "snapshot_text": "初训后按24个月的周期安排复训。"
+        },
+        {
+          "item_id": "renewal-reminder",
+          "snapshot_text": "按24个月周期计算到期日，并在到期前30日提醒。"
+        },
+        {
+          "item_id": "records-retention",
+          "snapshot_text": "培训完成凭证保存3年。"
+        }
+      ],
+      "annotations": [
+        {
+          "item_id": "scope",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["training-renewal/claim/1"],
+          "baseline_evidence": [
+            {"document_id": "training-renewal", "version_id": "v1", "block_key": "training-renewal/1/7d51db3d19048207"}
+          ]
+        },
+        {
+          "item_id": "renewal-period",
+          "judgment": "material",
+          "baseline_claim_ids": ["training-renewal/claim/2"],
+          "baseline_evidence": [
+            {"document_id": "training-renewal", "version_id": "v1", "block_key": "training-renewal/2/5475d08ff2624d2a"}
+          ],
+          "revised_text": "初训后按12个月的周期安排复训。",
+          "evidence": [
+            {"document_id": "training-renewal", "version_id": "v2", "block_key": "training-renewal/2/922fc362a58b3fd5"}
+          ]
+        },
+        {
+          "item_id": "renewal-reminder",
+          "judgment": "material",
+          "baseline_claim_ids": ["training-renewal/claim/2", "training-renewal/claim/3"],
+          "baseline_evidence": [
+            {"document_id": "training-renewal", "version_id": "v1", "block_key": "training-renewal/2/5475d08ff2624d2a"},
+            {"document_id": "training-renewal", "version_id": "v1", "block_key": "training-renewal/3/999a46d5cd0b0876"}
+          ],
+          "revised_text": "按12个月周期计算到期日，并在到期前45日提醒。",
+          "evidence": [
+            {"document_id": "training-renewal", "version_id": "v2", "block_key": "training-renewal/2/922fc362a58b3fd5"},
+            {"document_id": "training-renewal", "version_id": "v2", "block_key": "training-renewal/3/41079409b159a348"}
+          ]
+        },
+        {
+          "item_id": "records-retention",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["training-renewal/claim/4"],
+          "baseline_evidence": [
+            {"document_id": "training-renewal", "version_id": "v1", "block_key": "training-renewal/4/8ad255a3dc8f9a3f"}
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "meeting-wording",
+      "goal": "维护会议纪要留存清单",
+      "budget": {
+        "max_steps": 4,
+        "max_tokens": 12000,
+        "max_wall_seconds": 90
+      },
+      "corpus": {
+        "before": [
+          {
+            "document_id": "meeting-wording",
+            "version": {
+              "version_id": "v1",
+              "blocks": [
+                {
+                  "block_key": "meeting-wording/1/4c1346e411987eee",
+                  "heading_path": ["会议纪要留存规定", "提交期限"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 27,
+                  "text": "第一条 会议结束后2个工作日内，记录人应提交会议纪要。"
+                },
+                {
+                  "block_key": "meeting-wording/2/66a616b834ad3bb3",
+                  "heading_path": ["会议纪要留存规定", "审阅职责"],
+                  "ordinal": 2,
+                  "start_offset": 28,
+                  "end_offset": 44,
+                  "text": "第二条 会议召集人负责审阅纪要。"
+                },
+                {
+                  "block_key": "meeting-wording/3/593328d849688eda",
+                  "heading_path": ["会议纪要留存规定", "归档位置"],
+                  "ordinal": 3,
+                  "start_offset": 45,
+                  "end_offset": 65,
+                  "text": "第三条 审阅通过的纪要归入部门共享档案。"
+                },
+                {
+                  "block_key": "meeting-wording/4/578a96be6653d162",
+                  "heading_path": ["会议纪要留存规定", "留存期限"],
+                  "ordinal": 4,
+                  "start_offset": 66,
+                  "end_offset": 83,
+                  "text": "第四条 已归档的会议纪要保留2年。"
+                }
+              ]
+            }
+          }
+        ],
+        "after": [
+          {
+            "document_id": "meeting-wording",
+            "version": {
+              "version_id": "v2",
+              "blocks": [
+                {
+                  "block_key": "meeting-wording/1/caf39d4dd08ba4c3",
+                  "heading_path": ["会议纪要留存规定", "提交期限"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 28,
+                  "text": "第一条 记录人应在会议结束后的两个工作日内提交会议纪要。"
+                },
+                {
+                  "block_key": "meeting-wording/2/949289bd64f18b81",
+                  "heading_path": ["会议纪要留存规定", "审阅职责"],
+                  "ordinal": 2,
+                  "start_offset": 29,
+                  "end_offset": 48,
+                  "text": "第二条 纪要由该会议的召集人负责审阅。"
+                },
+                {
+                  "block_key": "meeting-wording/3/593328d849688eda",
+                  "heading_path": ["会议纪要留存规定", "归档位置"],
+                  "ordinal": 3,
+                  "start_offset": 49,
+                  "end_offset": 69,
+                  "text": "第三条 审阅通过的纪要归入部门共享档案。"
+                },
+                {
+                  "block_key": "meeting-wording/4/578a96be6653d162",
+                  "heading_path": ["会议纪要留存规定", "留存期限"],
+                  "ordinal": 4,
+                  "start_offset": 70,
+                  "end_offset": 87,
+                  "text": "第四条 已归档的会议纪要保留2年。"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "artifact": [
+        {
+          "item_id": "minutes-deadline",
+          "snapshot_text": "会议记录人须在会后2个工作日内提交纪要。"
+        },
+        {
+          "item_id": "minutes-reviewer",
+          "snapshot_text": "会议纪要由会议召集人审阅。"
+        },
+        {
+          "item_id": "minutes-storage",
+          "snapshot_text": "纪要通过审阅后归入部门共享档案。"
+        },
+        {
+          "item_id": "minutes-retention",
+          "snapshot_text": "会议纪要归档后保留2年。"
+        }
+      ],
+      "annotations": [
+        {
+          "item_id": "minutes-deadline",
+          "judgment": "immaterial",
+          "baseline_claim_ids": ["meeting-wording/claim/1"],
+          "baseline_evidence": [
+            {"document_id": "meeting-wording", "version_id": "v1", "block_key": "meeting-wording/1/4c1346e411987eee"}
+          ]
+        },
+        {
+          "item_id": "minutes-reviewer",
+          "judgment": "immaterial",
+          "baseline_claim_ids": ["meeting-wording/claim/2"],
+          "baseline_evidence": [
+            {"document_id": "meeting-wording", "version_id": "v1", "block_key": "meeting-wording/2/66a616b834ad3bb3"}
+          ]
+        },
+        {
+          "item_id": "minutes-storage",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["meeting-wording/claim/3"],
+          "baseline_evidence": [
+            {"document_id": "meeting-wording", "version_id": "v1", "block_key": "meeting-wording/3/593328d849688eda"}
+          ]
+        },
+        {
+          "item_id": "minutes-retention",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["meeting-wording/claim/4"],
+          "baseline_evidence": [
+            {"document_id": "meeting-wording", "version_id": "v1", "block_key": "meeting-wording/4/578a96be6653d162"}
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "visitor-unchanged",
+      "goal": "维护办公区访客登记清单",
+      "budget": {
+        "max_steps": 4,
+        "max_tokens": 12000,
+        "max_wall_seconds": 90
+      },
+      "corpus": {
+        "before": [
+          {
+            "document_id": "visitor-unchanged",
+            "version": {
+              "version_id": "v1",
+              "blocks": [
+                {
+                  "block_key": "visitor-unchanged/1/fbad54d14c218d3e",
+                  "heading_path": ["办公区访客管理规定", "登记项目"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 24,
+                  "text": "第一条 访客到达时登记姓名、来访单位和访问目的。"
+                },
+                {
+                  "block_key": "visitor-unchanged/2/2c269a09853150bd",
+                  "heading_path": ["办公区访客管理规定", "接待确认"],
+                  "ordinal": 2,
+                  "start_offset": 25,
+                  "end_offset": 45,
+                  "text": "第二条 访客进入办公区前须由接待人确认。"
+                },
+                {
+                  "block_key": "visitor-unchanged/3/3c4bbc4a993176fb",
+                  "heading_path": ["办公区访客管理规定", "访客证"],
+                  "ordinal": 3,
+                  "start_offset": 46,
+                  "end_offset": 63,
+                  "text": "第三条 离开办公区时须归还访客证。"
+                },
+                {
+                  "block_key": "visitor-unchanged/4/1415957097c7280d",
+                  "heading_path": ["办公区访客管理规定", "记录期限"],
+                  "ordinal": 4,
+                  "start_offset": 64,
+                  "end_offset": 80,
+                  "text": "第四条 访客登记记录保存90天。"
+                }
+              ]
+            }
+          }
+        ],
+        "after": [
+          {
+            "document_id": "visitor-unchanged",
+            "version": {
+              "version_id": "v1",
+              "blocks": [
+                {
+                  "block_key": "visitor-unchanged/1/fbad54d14c218d3e",
+                  "heading_path": ["办公区访客管理规定", "登记项目"],
+                  "ordinal": 1,
+                  "start_offset": 0,
+                  "end_offset": 24,
+                  "text": "第一条 访客到达时登记姓名、来访单位和访问目的。"
+                },
+                {
+                  "block_key": "visitor-unchanged/2/2c269a09853150bd",
+                  "heading_path": ["办公区访客管理规定", "接待确认"],
+                  "ordinal": 2,
+                  "start_offset": 25,
+                  "end_offset": 45,
+                  "text": "第二条 访客进入办公区前须由接待人确认。"
+                },
+                {
+                  "block_key": "visitor-unchanged/3/3c4bbc4a993176fb",
+                  "heading_path": ["办公区访客管理规定", "访客证"],
+                  "ordinal": 3,
+                  "start_offset": 46,
+                  "end_offset": 63,
+                  "text": "第三条 离开办公区时须归还访客证。"
+                },
+                {
+                  "block_key": "visitor-unchanged/4/1415957097c7280d",
+                  "heading_path": ["办公区访客管理规定", "记录期限"],
+                  "ordinal": 4,
+                  "start_offset": 64,
+                  "end_offset": 80,
+                  "text": "第四条 访客登记记录保存90天。"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "artifact": [
+        {
+          "item_id": "record-fields",
+          "snapshot_text": "登记访客姓名、来访单位和访问目的。"
+        },
+        {
+          "item_id": "host-check",
+          "snapshot_text": "访客进入办公区前由接待人确认。"
+        },
+        {
+          "item_id": "badge-return",
+          "snapshot_text": "访客离开办公区时归还访客证。"
+        },
+        {
+          "item_id": "record-keep",
+          "snapshot_text": "访客登记记录保存90天。"
+        }
+      ],
+      "annotations": [
+        {
+          "item_id": "record-fields",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["visitor-unchanged/claim/1"],
+          "baseline_evidence": [
+            {"document_id": "visitor-unchanged", "version_id": "v1", "block_key": "visitor-unchanged/1/fbad54d14c218d3e"}
+          ]
+        },
+        {
+          "item_id": "host-check",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["visitor-unchanged/claim/2"],
+          "baseline_evidence": [
+            {"document_id": "visitor-unchanged", "version_id": "v1", "block_key": "visitor-unchanged/2/2c269a09853150bd"}
+          ]
+        },
+        {
+          "item_id": "badge-return",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["visitor-unchanged/claim/3"],
+          "baseline_evidence": [
+            {"document_id": "visitor-unchanged", "version_id": "v1", "block_key": "visitor-unchanged/3/3c4bbc4a993176fb"}
+          ]
+        },
+        {
+          "item_id": "record-keep",
+          "judgment": "not_affected",
+          "baseline_claim_ids": ["visitor-unchanged/claim/4"],
+          "baseline_evidence": [
+            {"document_id": "visitor-unchanged", "version_id": "v1", "block_key": "visitor-unchanged/4/1415957097c7280d"}
+          ]
+        }
+      ]
+    }
+  ]
+}
