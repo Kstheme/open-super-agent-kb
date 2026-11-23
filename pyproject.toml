@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "openkb"
 version = "0.0.1"
 requires-python = ">=3.10"
-dependencies = ["jsonschema>=4.18", "tomli>=2; python_version < '3.11'"]
+dependencies = ["jsonschema>=4.18", "markdown-it-py>=3,<5", "pdfplumber>=0.11,<1", "tomli>=2; python_version < '3.11'"]
 description = "Local knowledge base and review evaluation harness"
 
 [project.scripts]
