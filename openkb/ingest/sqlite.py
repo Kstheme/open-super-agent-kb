@@ -4,7 +4,7 @@ from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 
-from .model import Block, Locator, Version
+from .model import Block, Locator, TableCell, Version
 
 
 _SCHEMA = """
@@ -36,6 +36,8 @@ def _block(data: str) -> Block:
     locator = fields["locator"]
     if locator["bbox"] is not None:
         locator["bbox"] = tuple(locator["bbox"])
+    if "table_cells" in locator:
+        locator["table_cells"] = tuple(TableCell(**cell) for cell in locator["table_cells"])
     fields["locator"] = Locator(**locator)
     return Block(**fields)
 

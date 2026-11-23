@@ -2,6 +2,13 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class TableCell:
+    column: int
+    column_span: int
+    vertical_start_row: int | None = None
+
+
+@dataclass(frozen=True)
 class Locator:
     """A location in the retained original using one-based page, line and row indices."""
 
@@ -12,6 +19,7 @@ class Locator:
     paragraph: int | None = None
     table: int | None = None
     row: int | None = None
+    table_cells: tuple[TableCell, ...] = ()
 
 
 @dataclass(frozen=True)

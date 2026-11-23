@@ -34,3 +34,15 @@ uv run python -m unittest discover -s tests -p test_ingest_cli.py -v
 | Kubernetes 真实修订 | 5/5 人工标注的正文锚点对应到正确 Markdown 行 |
 
 真实版本对中经人工标注的锚点是计分范围。报告另列新增、移除和候选歧义。无法确认一对一关系的重复文本不会被自动配对。
+
+## Word 资料
+
+将原生 `.docx` 传给同一个 `ingest add` 命令。划块保留标题路径，按正文中的物理段落计数，空段落仍占原文位置。表格中的每个含文字的物理行是一个块。`table`、`row` 及网格列号从 1 开始。
+
+在表格行的 `locator.table_cells` 中，`column_span` 记录横向跨度，`vertical_start_row` 标记纵向合并的起始行。合并区域的文字只保留在起始单元格。续行保留空文本槽和起始行位置，便于查阅原文。正文没有可提取文字时，导入记录会提示定位受限。
+
+使用同一公开样本目录可验收 Section508.gov 原始 Word 检查清单的标题、段落和 17 张表格。离线小样本覆盖合并单元格、重复导入和旧版原文取回。
+
+```powershell
+uv run python -m unittest discover -s tests -p test_ingest_docx.py -v
+```

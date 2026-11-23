@@ -7,6 +7,7 @@ from markdown_it import MarkdownIt
 from pdfplumber import open as open_pdf
 from pdfminer.pdfexceptions import PDFException
 
+from .docx import parse_docx
 from .model import Locator, ParsedBlock, ParsedDocument
 
 
@@ -184,4 +185,5 @@ PARSERS: dict[str, Callable[[bytes], ParsedDocument]] = {
     ".md": parse_markdown,
     ".markdown": parse_markdown,
     ".pdf": parse_pdf,
+    ".docx": parse_docx,
 }
