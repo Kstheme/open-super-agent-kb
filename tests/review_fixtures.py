@@ -6,9 +6,11 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 from xml.sax.saxutils import escape
 from zipfile import ZipFile
 
+from openkb.agent.model import ModelClient
 from openkb.server.cli import main
 
 
@@ -56,6 +58,13 @@ class ReviewCliCase(TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.database = self.root / "ledger.sqlite"
+        self.config = self.root / "config.toml"
+        self.config.write_text(
+            '[model]\nbase_url = "http://fixture.invalid/v1"\n'
+            'api_key = "fixture-key"\nmodel_id = "fixture-model"\n'
+            '[prices]\nversion = "fixture-prices"\n',
+            encoding="utf-8",
+        )
         policy = write_docx(
             self.root / "508-applicability-checklist.docx",
             paragraph("☐2.4.1 Bypass Blocks (not required for non-web documents and software)"),
@@ -81,3 +90,20 @@ class ReviewCliCase(TestCase):
             "review", "run", self.artifact_id, self.word_version["id"], new_file,
             *args, expected_exit=expected_exit,
         )
+
+    def model_reply(self, answer):
+        def call(client, method, path, payload, timeout):
+            if method == "GET" and path == "models":
+                return {"data": [{"id": client.config.model_id}]}
+            self.assertEqual((method, path), ("POST", "chat/completions"))
+            value = answer(payload) if callable(answer) else answer
+            return {
+                "choices": [{"message": {"content": json.dumps(value)}}],
+                "usage": {"prompt_tokens": 40, "completion_tokens": 10},
+            }
+        return patch.object(ModelClient, "_call", autospec=True, side_effect=call)
+
+    def new_word_block(self, path, text):
+        version = self.command("ingest", "add", path, "--document", "section508-word")
+        return next(block for block in self.command("ingest", "show", version["id"])["blocks"]
+                    if text in block["text"])
