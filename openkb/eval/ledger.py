@@ -6,7 +6,7 @@ from pathlib import Path
 from time import perf_counter
 
 from openkb.agent.model import ModelClient
-from openkb.agent.review import ReviewCandidate, judge_change
+from openkb.agent.review import ReviewCandidate, eligible_candidates, judge_change, proposal_evidence
 from openkb.core.review import align_blocks, trace_review
 
 from .contract import Block, Cost, EvidenceReference, Proposal, ReviewRequest, ReviewResult, Timing
@@ -147,8 +147,11 @@ class LedgerReviewSystem:
         jobs = []
         for item in request.artifact:
             evidence = tuple(changes[ref] for ref in basis[item.item_id])
-            blocks = {ref: block for review in evidence for ref, block in review.candidates}
-            if blocks and not any(review.ambiguous for review in evidence):
+            blocks = eligible_candidates(
+                (candidate for review in evidence for candidate in review.candidates),
+                ambiguous=any(review.ambiguous for review in evidence),
+            )
+            if blocks:
                 jobs.append((item, evidence, blocks))
 
         pending = tuple(item.item_id for item, _, _ in jobs)
@@ -170,11 +173,13 @@ class LedgerReviewSystem:
                 return result(state=generation.state, gaps=generation.gaps, error=generation.reason)
             judgment = generation.value
             if judgment["judgment"] == "material":
-                cited = [candidates[reference["block_id"]] for reference in judgment["evidence"]]
-                retained = [review.after for review in evidence if review.after is not None]
                 proposals.append(Proposal(
                     item.item_id, "material", judgment["revised_text"].strip(),
-                    tuple(dict.fromkeys((*cited, *retained))),
+                    proposal_evidence(
+                        (candidates[reference["block_id"]] for reference in judgment["evidence"]),
+                        (review.after for review in evidence if review.after is not None),
+                        identity=lambda reference: reference,
+                    ),
                 ))
             elif judgment["judgment"] == "immaterial":
                 proposals.append(Proposal(item.item_id, "immaterial"))

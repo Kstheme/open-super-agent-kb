@@ -7,7 +7,7 @@ from time import monotonic
 from uuid import uuid4
 
 from openkb.agent.model import EndpointError, ModelClient, load_model_config
-from openkb.agent.review import ReviewCandidate, judge_change
+from openkb.agent.review import ReviewCandidate, eligible_candidates, judge_change, proposal_evidence
 from openkb.core.delivery import MAX_STEPS, MAX_TOKENS, MAX_WALL_SECONDS
 from openkb.core.review import trace_review
 from openkb.ingest.ledger import EvidenceValidator, Ledger, StoreError
@@ -78,11 +78,12 @@ def _judge_affected(
     jobs = []
     for entry in report["affected"]:
         changes = entry["changes"]
-        candidates = {
-            block["id"]: block for change in changes for block in change["candidate_blocks"]
-        }
         ambiguous = any(change["status"] == "ambiguous" for change in changes)
-        if candidates and not ambiguous:
+        candidates = eligible_candidates(
+            ((block["id"], block) for change in changes for block in change["candidate_blocks"]),
+            ambiguous=ambiguous,
+        )
+        if candidates:
             jobs.append((entry, candidates))
         else:
             reason = "新版证据的块对齐存在歧义。" if ambiguous else "新版缺少可核对的替代依据。"
@@ -154,11 +155,11 @@ def _judge_affected(
             if monotonic() >= deadline:
                 _pause_review(report, pending[index:])
                 break
-            evidence = {
-                proof.id: _located(proof, source, blocks[proof.block_id]) for proof in proofs
-            }
-            for proof in retained.get(item_id, ()):
-                evidence.setdefault(proof["id"], proof)
+            evidence = proposal_evidence(
+                (_located(proof, source, blocks[proof.block_id]) for proof in proofs),
+                retained.get(item_id, ()),
+                identity=lambda proof: proof["id"],
+            )
             report["proposals"].append({
                 "id": uuid4().hex,
                 "item_id": item_id,
@@ -167,7 +168,7 @@ def _judge_affected(
                 "old_item": item,
                 "revised_text": judgment["revised_text"].strip(),
                 "revised_method": judgment["revised_method"].strip(),
-                "evidence": list(evidence.values()),
+                "evidence": list(evidence),
             })
         reason = judgment["reason"].strip()
         if judgment["judgment"] == "needs_human":

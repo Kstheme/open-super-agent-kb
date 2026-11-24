@@ -89,22 +89,31 @@ class LedgerEvalTests(unittest.TestCase):
             encoding="utf-8",
         )
         report = self.root / "report.json"
+        material_attempts = 0
 
         def call(client, method, path, payload, timeout):
+            nonlocal material_attempts
             if (method, path) == ("GET", "models"):
                 return {"data": [{"id": client.config.model_id}]}
             self.assertEqual((method, path), ("POST", "chat/completions"))
             prompt = payload["messages"][0]["content"]
             self.assertNotIn("GOLD_EXPECTED_TEXT", prompt)
             self.assertNotIn("SCORING_ONLY", prompt)
-            source = json.loads(prompt.rsplit("\n", 1)[-1])
+            source = json.loads(next(line for line in prompt.splitlines() if line.startswith('{"item_text":')))
             self.assertEqual(set(source["old_evidence"]), {"七天", "保留原件"})
             self.assertEqual([block["text"] for block in source["new_candidates"]], ["十四天"])
-            candidate = next(block for block in source["new_candidates"] if block["text"] == "十四天")
+            candidate = source["new_candidates"][0]
+            material_attempts += 1
+            if material_attempts == 1:
+                # Valid old wording in the retained block cannot ground a material change.
+                evidence = {"block_id": "policy/archive", "quote": "保留原件"}
+            else:
+                self.assertIn("Evidence must reference a candidate block", prompt)
+                evidence = {"block_id": candidate["block_id"], "quote": "十四天"}
             answer = {
                 "judgment": "material", "reason": "提交时间延长。",
                 "revised_text": "十四天内提交。",
-                "evidence": [{"block_id": candidate["block_id"], "quote": "十四天"}],
+                "evidence": [evidence],
             }
             return {
                 "choices": [{"message": {"content": json.dumps(answer)}}],
@@ -117,7 +126,7 @@ class LedgerEvalTests(unittest.TestCase):
                 "--config", str(config), "--out", str(report),
             ])
         self.assertEqual(status, 0)
-        self.assertEqual(calls.call_count, 2)
+        self.assertEqual(calls.call_count, 3)
         result = json.loads(report.read_text(encoding="utf-8"))
         self.assertEqual(result["system"], "ledger")
         self.assertEqual(result["aggregate"]["recall"], 1)
