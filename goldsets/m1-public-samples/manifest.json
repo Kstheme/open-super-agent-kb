@@ -1,0 +1,55 @@
+{
+  "format_version": 1,
+  "sources": [
+    {
+      "id": "cfr-255-2022",
+      "file": "cfr-255-2022.pdf",
+      "format": "pdf",
+      "version": "2022-01-01",
+      "authority": "FTC / U.S. Government Publishing Office",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2022-title16-vol1/pdf/CFR-2022-title16-vol1-part255.pdf",
+      "reuse_policy": "https://www.govinfo.gov/about",
+      "sha256": "242f7bc6e068b3d953e212bbdce6abad4bd4323989f7fecf79016ed7a49b2a01"
+    },
+    {
+      "id": "cfr-255-2024",
+      "file": "cfr-255-2024.pdf",
+      "format": "pdf",
+      "version": "2024-01-01",
+      "authority": "FTC / U.S. Government Publishing Office",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2024-title16-vol1/pdf/CFR-2024-title16-vol1-part255.pdf",
+      "reuse_policy": "https://www.govinfo.gov/about",
+      "sha256": "0e436e56433219eabb54ff1a289f2b0d3f3055ef9cd3d7188a92fac0be7039e0"
+    },
+    {
+      "id": "k8s-components-before",
+      "file": "k8s-components-before.md",
+      "format": "markdown",
+      "version": "4155ff4fb909be6f7fffcf656605e73c4ec1b6f5",
+      "authority": "The Kubernetes Authors (CC BY 4.0)",
+      "url": "https://raw.githubusercontent.com/kubernetes/website/4155ff4fb909be6f7fffcf656605e73c4ec1b6f5/content/zh-cn/docs/concepts/overview/components.md",
+      "reuse_policy": "https://github.com/kubernetes/website/blob/4155ff4fb909be6f7fffcf656605e73c4ec1b6f5/LICENSE",
+      "sha256": "0efbd177d7ca82a5e9a38c041813dad3df494ed5230f265cfe265f29f68fcf6d"
+    },
+    {
+      "id": "k8s-components-after",
+      "file": "k8s-components-after.md",
+      "format": "markdown",
+      "version": "53ef1f148fc41673d8181afadc0faaa803c9eff6",
+      "authority": "The Kubernetes Authors (CC BY 4.0)",
+      "url": "https://raw.githubusercontent.com/kubernetes/website/53ef1f148fc41673d8181afadc0faaa803c9eff6/content/zh-cn/docs/concepts/overview/components.md",
+      "reuse_policy": "https://github.com/kubernetes/website/blob/53ef1f148fc41673d8181afadc0faaa803c9eff6/LICENSE",
+      "sha256": "c48455cbb5f79486d6666bf5f6c02227132d16b92c3136f167794db22b263416"
+    },
+    {
+      "id": "section508-word",
+      "file": "section508-word.docx",
+      "format": "docx",
+      "version": "DOCX core revision 3",
+      "authority": "Section508.gov / U.S. General Services Administration",
+      "url": "https://www.section508.gov/~assets/files/msword2016-printable-accessiblility-checklist.docx",
+      "reuse_policy": "https://www.section508.gov/website-policies/#reuse-and-copyright",
+      "sha256": "943fba7431ccc815e8a997937baaa2768bdf0baee318ce077e9cba8a8b028475"
+    }
+  ]
+}
