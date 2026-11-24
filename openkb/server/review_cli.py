@@ -23,7 +23,16 @@ def configure(commands) -> argparse.ArgumentParser:
     start.add_argument("--config", type=Path, help="Override ~/.openkb/config.toml")
     show = subcommands.add_parser("show", help="Read a persisted review")
     show.add_argument("review", help="Review ID")
-    for command in (start, show):
+    accept = subcommands.add_parser("accept", help="Accept a proposal and create a new checklist version")
+    reject = subcommands.add_parser("reject", help="Reject a proposal while keeping the checklist")
+    for decision in (accept, reject):
+        decision.add_argument("review", help="Review ID")
+        decision.add_argument("proposal", help="Proposal ID")
+    reject.add_argument("--reason", help="Optional reason to keep in the ledger")
+    artifact = subcommands.add_parser("artifact", help="Read the current or a historical checklist version")
+    artifact.add_argument("artifact", help="Delivered checklist ID")
+    artifact.add_argument("--version", type=int, help="Checklist version number")
+    for command in (start, show, accept, reject, artifact):
         command.add_argument("--database", type=Path, required=True)
     return review
 
@@ -162,6 +171,7 @@ def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
         "kind": "review",
         "state": "done",
         "artifact_id": artifact["id"],
+        "artifact_version": artifact["version"],
         "before_version": before.id,
         "after_version": after.id,
         "normalization_version": alignment["normalization_version"],
@@ -181,7 +191,17 @@ def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
 def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
         with open_delivery_store(args.database) as store:
-            report = store.review(args.review) if args.review_command == "show" else _run_review(args, store)
+            command = args.review_command
+            if command == "run":
+                report = _run_review(args, store)
+            elif command == "show":
+                report = store.review(args.review)
+            elif command == "artifact":
+                report = store.artifact(args.artifact, args.version)
+            else:
+                report = store.decide_review(
+                    args.review, args.proposal, accept=command == "accept", reason=getattr(args, "reason", None),
+                )
     except (KeyError, OSError, ValueError, StoreError) as error:
         parser.error(str(error))
     print(json.dumps(report, ensure_ascii=False, indent=2))
