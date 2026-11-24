@@ -1,13 +1,14 @@
 import json
 import sqlite3
-from collections.abc import Sequence
-from contextlib import closing
+from collections.abc import Iterator, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import asdict
 from pathlib import Path
 
 from openkb.core.delivery import DeliveryConflict
 
 from .claims import Claim
+from .ledger import StoreError
 from .model import Block, Evidence, Locator, TableCell, Version
 from .batch import BatchFile
 
@@ -107,6 +108,15 @@ def _block(data: str) -> Block:
         locator["table_cells"] = tuple(TableCell(**cell) for cell in locator["table_cells"])
     fields["locator"] = Locator(**locator)
     return Block(**fields)
+
+
+@contextmanager
+def open_delivery_store(path: Path) -> Iterator["SqliteStore"]:
+    """Expose delivery storage failures through the ledger boundary."""
+    try:
+        yield SqliteStore(path)
+    except sqlite3.Error as error:
+        raise StoreError(str(error)) from error
 
 
 class SqliteStore:

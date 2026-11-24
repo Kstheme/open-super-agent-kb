@@ -3,12 +3,11 @@ from dataclasses import asdict
 from functools import partial
 import json
 from pathlib import Path
-import sqlite3
 from uuid import uuid4
 
 from openkb.core.delivery import DeliveryConflict, MAX_STEPS, execute_delivery
-from openkb.ingest.ledger import Ledger
-from openkb.ingest.sqlite import SqliteStore
+from openkb.ingest.ledger import Ledger, StoreError
+from openkb.ingest.sqlite import SqliteStore, open_delivery_store
 from openkb.profiles.word_accessibility import CHECKLIST_TITLE, SKELETON, find_coverage, supports_slot
 
 
@@ -16,7 +15,7 @@ def configure(commands) -> argparse.ArgumentParser:
     deliver = commands.add_parser("deliver", help="Request and inspect a Word self-check")
     subcommands = deliver.add_subparsers(dest="deliver_command", required=True)
     start = subcommands.add_parser("run", help="Request a Section 508 Word self-check")
-    start.add_argument("message")
+    start.add_argument("message", help="Request text to retain with the fixed Section 508 Word task")
     start.add_argument("--source", action="append", required=True, help="Ingested source version ID")
     start.add_argument("--max-steps", type=int, default=MAX_STEPS)
     show = subcommands.add_parser("show", help="Read a persisted delivery task")
@@ -80,32 +79,36 @@ def _run_delivery(args: argparse.Namespace, store: SqliteStore) -> dict:
     return data
 
 
+def _dispatch(args: argparse.Namespace, store: SqliteStore) -> dict:
+    if args.deliver_command == "show":
+        return store.delivery(args.task)
+    if args.deliver_command == "propose":
+        title = args.title.strip()
+        if not title:
+            raise ValueError("A proposed slot must contain a title")
+        proposal = {"id": uuid4().hex, "task_id": args.task, "title": title, "state": "proposed"}
+        store.save_skeleton_proposal(proposal)
+        return proposal
+    if args.deliver_command == "flag-conflict":
+        reason = args.reason.strip()
+        if not reason:
+            raise ValueError("A conflict must have a reason")
+        source = store.version(args.source)
+        if not supports_slot(source, args.slot):
+            raise ValueError(f"{source.original_name} is not a source for slot {args.slot}")
+        conflict = DeliveryConflict(uuid4().hex, args.slot, source.id, reason)
+        store.flag_delivery_conflict(conflict)
+        return asdict(conflict)
+    if args.deliver_command == "resolve-conflict":
+        return asdict(store.resolve_delivery_conflict(args.conflict))
+    return _run_delivery(args, store)
+
+
 def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
-        store = SqliteStore(args.database)
-        if args.deliver_command == "show":
-            data = store.delivery(args.task)
-        elif args.deliver_command == "propose":
-            title = args.title.strip()
-            if not title:
-                raise ValueError("A proposed slot must contain a title")
-            data = {"id": uuid4().hex, "task_id": args.task, "title": title, "state": "proposed"}
-            store.save_skeleton_proposal(data)
-        elif args.deliver_command == "flag-conflict":
-            reason = args.reason.strip()
-            if not reason:
-                raise ValueError("A conflict must have a reason")
-            source = store.version(args.source)
-            if not supports_slot(source, args.slot):
-                raise ValueError(f"{source.original_name} is not a source for slot {args.slot}")
-            conflict = DeliveryConflict(uuid4().hex, args.slot, source.id, reason)
-            store.flag_delivery_conflict(conflict)
-            data = asdict(conflict)
-        elif args.deliver_command == "resolve-conflict":
-            data = asdict(store.resolve_delivery_conflict(args.conflict))
-        else:
-            data = _run_delivery(args, store)
-    except (KeyError, OSError, ValueError, sqlite3.Error) as error:
+        with open_delivery_store(args.database) as store:
+            data = _dispatch(args, store)
+    except (KeyError, OSError, ValueError, StoreError) as error:
         parser.error(str(error))
     print(json.dumps(data, ensure_ascii=False, indent=2))
     return int(args.deliver_command == "run" and data["state"] == "paused")

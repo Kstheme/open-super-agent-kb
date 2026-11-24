@@ -14,6 +14,10 @@ from .parsers import PARSERS
 NORMALIZATION_VERSION = "1"
 
 
+class StoreError(RuntimeError):
+    """Storage failed while carrying out a ledger operation."""
+
+
 class Store(Protocol):
     def save(self, version: Version, original: bytes) -> Version: ...
     def version(self, version_id: str) -> Version: ...

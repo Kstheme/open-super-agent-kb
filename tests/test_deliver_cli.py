@@ -1,14 +1,16 @@
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 from zipfile import ZipFile
 
 from openkb.ingest.claims import compliance_claim
 from openkb.ingest.ledger import EvidenceValidator
 from openkb.ingest.sqlite import SqliteStore
+from openkb.profiles.word_accessibility import find_coverage
 from openkb.server.cli import main
 
 
@@ -162,3 +164,41 @@ class DeliverCliTests(unittest.TestCase):
                 self.assertEqual(located["version_id"], version_id)
                 locations.add((located["locator"]["table"], located["locator"]["row"], located["quote"]))
             self.assertEqual(locations, expected)
+
+
+    def test_coverage_found_after_wall_budget_is_not_delivered(self):
+        scope, _ = self.scope_version()
+        word = self.word_version()
+        clock = 0
+
+        def slow_last_lookup(slot, **kwargs):
+            nonlocal clock
+            coverage = find_coverage(slot, **kwargs)
+            if slot.id == "image_descriptions":
+                clock = 601
+            return coverage
+
+        with (
+            patch("openkb.core.delivery.monotonic", side_effect=lambda: clock),
+            patch("openkb.server.deliver_cli.find_coverage", side_effect=slow_last_lookup),
+        ):
+            report = self.command(
+                "deliver", "run", REQUEST, "--source", scope, "--source", word, "--max-steps", "4",
+                expected_exit=1,
+            )
+
+        self.assertEqual(report["state"], "paused")
+        self.assertEqual(report["pause_reason"], "wall clock budget exhausted")
+        self.assertEqual(report["gaps"], [{"id": "image_descriptions", "title": "图片说明"}])
+        self.assertEqual(report["budget"]["steps"], 4)
+        self.assertIsNone(report["artifact"])
+        self.assertEqual(self.command("deliver", "show", report["id"]), report)
+
+    def test_unopenable_ledger_reports_a_cli_error(self):
+        invalid_path = self.root / "no-parent" / "ledger.db"
+        with redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit) as failed:
+            main(["deliver", "show", "task", "--database", str(invalid_path)])
+
+        self.assertEqual(failed.exception.code, 2)
+        self.assertIn("unable to open database file", error.getvalue())
+        self.assertNotIn("Traceback", error.getvalue())

@@ -51,7 +51,7 @@ def execute_delivery(
     pending = deque(skeleton)
     covered: dict[str, Coverage] = {}
     steps = 0
-    started = monotonic()
+    deadline = monotonic() + MAX_WALL_SECONDS
     conflicts = find_conflicts()
 
     def remove_conflicted_slots() -> None:
@@ -77,6 +77,8 @@ def execute_delivery(
         }
 
     while True:
+        if monotonic() >= deadline:
+            return snapshot("paused", "wall clock budget exhausted")
         if not pending:
             result = snapshot("done")
             conflicts = save_completed(result)
@@ -85,19 +87,23 @@ def execute_delivery(
             # Saving completion rechecks the ledger under its write lock.
             remove_conflicted_slots()
 
-        if monotonic() - started >= MAX_WALL_SECONDS:
-            return snapshot("paused", "wall clock budget exhausted")
         if steps >= max_steps:
             return snapshot("paused", "step budget exhausted")
         slot = pending.popleft()
         steps += 1
         coverage = find_coverage(slot)
+        if monotonic() >= deadline:
+            return snapshot("paused", "wall clock budget exhausted")
+
+        conflicts = find_conflicts()
+        if monotonic() >= deadline:
+            remove_conflicted_slots()
+            return snapshot("paused", "wall clock budget exhausted")
+
         if coverage is None:
             pending.append(slot)
         else:
             if coverage.slot_id != slot.id:
                 raise ValueError("Coverage does not match the requested slot")
             covered[slot.id] = coverage
-
-        conflicts = find_conflicts()
         remove_conflicted_slots()
