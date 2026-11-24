@@ -59,22 +59,43 @@ class IngestCliTests(_IngestHarness):
             b"<</Type/Pages/Count 1/Kids[3 0 R]>>",
             b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 100]>>",
         )
+        self.write_pdf(pdf, objects)
+        version = self.call("show", self.add(pdf, "no-text"))
+        self.assertEqual([block["kind"] for block in version["blocks"]], ["document"])
+        self.assertIsNone(version["blocks"][0]["locator"]["page"])
+        self.assertIn("原文定位受限", version["warnings"][0])
+
+    def test_mixed_pdf_warns_about_unimported_rotated_text(self):
+        pdf = self.root / "rotated.pdf"
+        plain = b"BT /F1 12 Tf 1 0 0 1 20 40 Tm (Upright) Tj ET"
+        rotated = b"BT /F1 12 Tf 0 1 -1 0 35 40 Tm (Rotated) Tj ET"
+        objects = (
+            b"<</Type/Catalog/Pages 2 0 R>>",
+            b"<</Type/Pages/Count 2/Kids[3 0 R 4 0 R]>>",
+            b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Resources<</Font<</F1 5 0 R>>>>/Contents 6 0 R>>",
+            b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Resources<</Font<</F1 5 0 R>>>>/Contents 7 0 R>>",
+            b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+            *(b"<</Length " + str(len(data)).encode() + b">>\nstream\n" + data + b"\nendstream"
+              for data in (plain, rotated)),
+        )
+        self.write_pdf(pdf, objects)
+        version = self.call("show", self.add(pdf, "mixed-pdf"))
+        self.assertTrue(any(block["text"] == "Upright" for block in version["blocks"]))
+        self.assertTrue(any("旋转文字：2" in warning for warning in version["warnings"]))
+
+    @staticmethod
+    def write_pdf(pdf, objects):
         data = bytearray(b"%PDF-1.4\n")
         positions = []
         for number, obj in enumerate(objects, 1):
             positions.append(len(data))
             data.extend(f"{number} 0 obj\n".encode() + obj + b"\nendobj\n")
         xref = len(data)
-        data.extend(b"xref\n0 4\n0000000000 65535 f \n")
+        data.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode())
         for position in positions:
             data.extend(f"{position:010} 00000 n \n".encode())
-        data.extend(f"trailer\n<</Root 1 0 R/Size 4>>\nstartxref\n{xref}\n%%EOF\n".encode())
+        data.extend(f"trailer\n<</Root 1 0 R/Size {len(objects) + 1}>>\nstartxref\n{xref}\n%%EOF\n".encode())
         pdf.write_bytes(data)
-
-        version = self.call("show", self.add(pdf, "no-text"))
-        self.assertEqual([block["kind"] for block in version["blocks"]], ["document"])
-        self.assertIsNone(version["blocks"][0]["locator"]["page"])
-        self.assertIn("原文定位受限", version["warnings"][0])
 
 
 @unittest.skipUnless(os.getenv("OPENKB_M1_SAMPLES"), "pinned M1 acceptance files are opt-in")

@@ -1,7 +1,9 @@
+import io
 import os
 import unittest
 from pathlib import Path
 from zipfile import ZipFile
+from contextlib import redirect_stderr
 
 from test_ingest_cli import _IngestHarness
 
@@ -80,13 +82,26 @@ class DocxIngestTests(_IngestHarness):
                           for row in (first, second)], [("table_row", 1, 1), ("table_row", 1, 2)])
         for row in (first, second):
             merged, unmerged = row["locator"]["table_cells"]
-            self.assertEqual(merged, {"column": 1, "column_span": 2, "vertical_start_row": 1})
-            self.assertEqual(unmerged, {"column": 3, "column_span": 1, "vertical_start_row": None})
+            self.assertEqual((merged["column"], merged["column_span"], merged["vertical_start_row"]),
+                             (1, 2, 1))
+            self.assertEqual((unmerged["column"], unmerged["column_span"], unmerged["vertical_start_row"]),
+                             (3, 1, None))
 
         retained = self.root / "retained.docx"
         self.call("original", before, "--out", retained)
         self.assertEqual(retained.read_bytes(), original)
         self.assertIn("新版说明", self.call("show", after)["blocks"][-1]["text"])
+
+    def test_evidence_cannot_include_the_synthetic_cell_separator(self):
+        word = self.root / "guide.docx"
+        _write_word(word, "续行")
+        version = self.add(word, "guide")
+        row = next(block for block in self.call("show", version)["blocks"] if block["kind"] == "table_row")
+        with redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit):
+            self.call("evidence-add", version, row["id"], "--quote", row["text"])
+        self.assertIn("single source table cell", error.getvalue())
+        evidence = self.call("evidence-add", version, row["id"], "--quote", "保留说明")
+        self.assertEqual(evidence["quote_start"], 7)
 
     @unittest.skipUnless(os.getenv("OPENKB_M1_SAMPLES"), "pinned M1 acceptance files are opt-in")
     def test_section508_native_docx_preserves_headings_paragraphs_and_physical_table_rows(self):

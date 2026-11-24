@@ -96,11 +96,12 @@ def extract_claims(
     accepted: dict[str, Claim] = {}
     rejected: dict[str, RejectedClaim] = {}
     feedback = ""
+    state, reason = "done", None
     for _ in range(_EVIDENCE_ATTEMPTS):
         generation = session.generate(prompt + feedback, _SCHEMA, gaps=(), max_attempts=2)
         if generation.state != "done":
-            return Extraction(generation.state, client.config.model_id, session.usage,
-                              (), tuple(rejected.values()), generation.reason)
+            state, reason = generation.state, generation.reason
+            break
 
         for candidate in generation.value["claims"]:
             text = candidate["text"].strip()
@@ -123,5 +124,7 @@ def extract_claims(
     claims = tuple(accepted.values())
     if claims:
         store.save_claims(claims)
-    return Extraction("failed" if rejected else "done", client.config.model_id, session.usage,
-                      claims, tuple(rejected.values()), "Unverified evidence after retries" if rejected else None)
+    if state == "done" and rejected:
+        state, reason = "failed", "Unverified evidence after retries"
+    return Extraction(state, client.config.model_id, session.usage,
+                      claims, tuple(rejected.values()), reason)

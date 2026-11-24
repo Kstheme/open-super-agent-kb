@@ -1,6 +1,7 @@
 import hashlib
 import json
 import unicodedata
+from collections.abc import Callable
 from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
@@ -37,7 +38,10 @@ class Ledger:
     def __init__(self, store: Store) -> None:
         self.store = store
 
-    def add(self, path: Path, document_id: str | None = None) -> Version:
+    def add(
+        self, path: Path, document_id: str | None = None, *,
+        save: Callable[[Version, bytes], Version] | None = None,
+    ) -> Version:
         suffix = path.suffix.lower()
         if suffix not in PARSERS:
             raise ValueError(f"Unsupported document format: {suffix or path.name}")
@@ -48,9 +52,11 @@ class Ledger:
         content_hash = _hash(raw)
         version_id = _key(document, content_hash, NORMALIZATION_VERSION)
         try:
-            return self.version(version_id)
+            version = self.version(version_id)
         except KeyError:
             pass
+        else:
+            return save(version, raw) if save is not None else version
         parsed = PARSERS[suffix](raw)
         blocks = []
         for ordinal, source in enumerate(parsed.blocks, 1):
@@ -68,7 +74,7 @@ class Ledger:
             version_id, document, path.name, content_hash, NORMALIZATION_VERSION,
             tuple(blocks), parsed.warnings,
         )
-        return self.store.save(version, raw)
+        return (save if save is not None else self.store.save)(version, raw)
 
     def version(self, version_id: str) -> Version:
         return self.store.version(version_id)
@@ -83,6 +89,8 @@ class Ledger:
         block = self._evidence_block(version, block_id)
         if not quote or not quote.strip():
             raise ValueError("Evidence quote must contain text")
+        if quote_start is not None and type(quote_start) is not int:
+            raise ValueError("Evidence quote offset must be an integer")
         if quote_start is None:
             quote_start = block.text.find(quote)
             if quote_start >= 0 and block.text.find(quote, quote_start + 1) >= 0:
@@ -90,6 +98,13 @@ class Ledger:
         if quote_start < 0 or not block.text.startswith(quote, quote_start):
             raise ValueError("Evidence quote does not match the selected block and offset")
         quote_end = quote_start + len(quote)
+        if block.kind == "table_row":
+            cells = block.locator.table_cells
+            if cells and all(cell.text_start is not None and cell.text_end is not None for cell in cells):
+                if not any(cell.text_start <= quote_start <= quote_end <= cell.text_end for cell in cells):
+                    raise ValueError("Evidence must point inside a single source table cell")
+            elif " | " in quote:
+                raise ValueError("Evidence must point inside a single source table cell")
         quote_hash = _hash(quote.encode("utf-8"))
         return Evidence(
             _key(version_id, block_id, str(quote_start), str(quote_end), quote_hash),

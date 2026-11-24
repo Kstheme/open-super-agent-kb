@@ -49,7 +49,7 @@ uv run python -m unittest discover -s tests -p test_ingest_docx.py -v
 
 ## 证据回点
 
-使用建库时的 SQLite 数据库。从 `openkb ingest show` 的版本结果选一个块，使用 `openkb ingest evidence-add VERSION BLOCK --quote QUOTE --database PATH` 保存原文片段。片段必须精确匹配该版本的选定块。若同一片段在块内出现多次，用 `--quote-start` 指明零起始的字符偏移。保存相同片段和偏移会返回相同证据 ID。
+使用建库时的 SQLite 数据库。从 `openkb ingest show` 的版本结果选一个块，使用 `openkb ingest evidence-add VERSION BLOCK --quote QUOTE --database PATH` 保存原文片段。片段必须精确匹配该版本的选定块。表格行的引文须位于单一原始单元格内。若同一片段在块内出现多次，用 `--quote-start` 指明零起始的字符偏移。保存相同片段和偏移会返回相同证据 ID。
 
 用 `openkb ingest evidence-show EVIDENCE --database PATH` 返回原文件名、资料和版本 ID、原文件哈希、引文、块内字符范围及定位信息。PDF 使用页号及 PDF 块范围，DOCX 使用正文段落或表格行，Markdown 使用原始行号。旧版证据可结合返回的版本 ID 用 `openkb ingest original` 取回原始文件。
 
@@ -57,7 +57,7 @@ uv run python -m unittest discover -s tests -p test_ingest_docx.py -v
 
 ## 批量建库与恢复
 
-批次创建时按路径排序并固定目录中支持的文件。CLI 把尝试进度写到标准错误流，把包含批次 ID、完成数、待处理数及失败原因的 JSON 写到标准输出。每个文件完成后都会保存记录。批次通过 `--limit` 设置本次最多尝试的文件数。
+批次创建时按路径排序并固定目录中支持的文件。CLI 把尝试进度写到标准错误流，把包含批次 ID、完成数、待处理数及失败原因的 JSON 写到标准输出。资料版本与该文件的完成记录在同一 SQLite 事务提交。批次通过 `--limit` 设置本次最多尝试的文件数。
 
 ```powershell
 uv run openkb ingest batch ./documents --database kb.sqlite --limit 50

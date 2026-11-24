@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from openkb.ingest.ledger import Ledger
+from openkb.ingest.sqlite import SqliteStore
 from openkb.server.cli import main
 
 from test_ingest_docx import _write_word
@@ -55,6 +56,26 @@ class BatchCliTests(unittest.TestCase):
         self.assertIn(str(failed), progress)
         self.assertEqual(len(progress.splitlines()), 1)
 
+    def test_interruption_while_recording_checkpoint_rolls_back_the_version(self):
+        source = self.source / "policy.md"
+        source.write_text("First version", encoding="utf-8")
+        version_ids = []
+
+        def interrupted(conn, batch_id, item):
+            version_ids.append(item.version_id)
+            raise KeyboardInterrupt
+
+        with patch.object(SqliteStore, "_finish_file", staticmethod(interrupted)):
+            paused, _ = self.call("batch", self.source, code=130)
+        self.assertEqual((paused["completed"], paused["pending"]), (0, 1))
+        with redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit):
+            main(["ingest", "show", version_ids[0], "--database", str(self.root / "kb.sqlite")])
+        self.assertIn("Unknown version", error.getvalue())
+        source.write_text("Replacement version", encoding="utf-8")
+        resumed, _ = self.call("resume", paused["batch_id"])
+        self.assertEqual(resumed["completed"], 1)
+        self.assertNotEqual(resumed["versions"][0]["version_id"], version_ids[0])
+
     @unittest.skipUnless(os.environ.get("OPENKB_M1_BATCH"), "Set OPENKB_M1_BATCH to the verified 100 originals")
     def test_real_batch_resumes_from_interrupted_document_51(self):
         samples = Path(os.environ["OPENKB_M1_BATCH"])
@@ -65,14 +86,14 @@ class BatchCliTests(unittest.TestCase):
         original_add = Ledger.add
         attempted = []
 
-        def interrupted(ledger, path):
+        def interrupted(ledger, path, **kwargs):
             attempted.append(path.name)
             if len(attempted) == 51:
                 # Interrupt after reading the first bytes but before writing the version.
                 with path.open("rb") as source:
                     self.assertTrue(source.read(8))
                     raise KeyboardInterrupt
-            return original_add(ledger, path)
+            return original_add(ledger, path, **kwargs)
 
         with patch.object(Ledger, "add", interrupted):
             paused, _ = self.call("batch", self.source, code=130)

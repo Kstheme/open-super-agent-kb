@@ -6,6 +6,8 @@ class TableCell:
     column: int
     column_span: int
     vertical_start_row: int | None = None
+    text_start: int | None = None
+    text_end: int | None = None
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from .ledger import Ledger
+from .model import Version
 from .parsers import PARSERS
 
 
@@ -19,6 +20,7 @@ class BatchStore(Protocol):
     def start_batch(self, batch_id: str, paths: Sequence[Path]) -> None: ...
     def batch_files(self, batch_id: str) -> tuple[BatchFile, ...]: ...
     def finish_file(self, batch_id: str, item: BatchFile) -> None: ...
+    def save_batch_version(self, batch_id: str, path: Path, version: Version, original: bytes) -> Version: ...
 
 
 Progress = Callable[[str, int, int, Path], None]
@@ -80,14 +82,17 @@ class Batch:
             for index, path in pending[:limit]:
                 self.progress(batch_id, index, len(files), path)
                 try:
-                    version = self.ledger.add(path)
+                    self.ledger.add(path, save=self._batch_save(batch_id, path))
                 except (OSError, ValueError) as error:
-                    result = BatchFile(path, None, str(error) or type(error).__name__)
-                else:
-                    result = BatchFile(path, version.id, None)
-                self.store.finish_file(batch_id, result)
+                    self.store.finish_file(batch_id, BatchFile(path, None, str(error) or type(error).__name__))
         except KeyboardInterrupt:
             report = self.status(batch_id)
             report["interrupted"] = True
             return report
         return self.status(batch_id)
+
+    def _batch_save(self, batch_id: str, path: Path) -> Callable[[Version, bytes], Version]:
+        def save(version: Version, original: bytes) -> Version:
+            return self.store.save_batch_version(batch_id, path, version, original)
+
+        return save

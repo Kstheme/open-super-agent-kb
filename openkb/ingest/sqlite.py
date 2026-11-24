@@ -95,21 +95,26 @@ class SqliteStore:
 
     def save(self, version: Version, original: bytes) -> Version:
         with closing(self._connect()) as conn, conn:
-            conn.execute("INSERT OR IGNORE INTO source_documents (id) VALUES (?)", (version.document_id,))
-            inserted = conn.execute(
-                """INSERT OR IGNORE INTO source_versions
-                   (id, document_id, original_name, content_hash, normalization_version, warnings, original)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (version.id, version.document_id, version.original_name, version.content_hash,
-                 version.normalization_version, json.dumps(version.warnings), original),
-            ).rowcount
-            if inserted:
-                conn.executemany(
-                    "INSERT INTO source_blocks (id, version_id, ordinal, data) VALUES (?, ?, ?, ?)",
-                    ((block.id, version.id, block.ordinal, json.dumps(asdict(block), ensure_ascii=False))
-                     for block in version.blocks),
-                )
+            inserted = self._insert_version(conn, version, original)
         return version if inserted else self.version(version.id)
+
+    @staticmethod
+    def _insert_version(conn: sqlite3.Connection, version: Version, original: bytes) -> bool:
+        conn.execute("INSERT OR IGNORE INTO source_documents (id) VALUES (?)", (version.document_id,))
+        inserted = conn.execute(
+            """INSERT OR IGNORE INTO source_versions
+               (id, document_id, original_name, content_hash, normalization_version, warnings, original)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (version.id, version.document_id, version.original_name, version.content_hash,
+             version.normalization_version, json.dumps(version.warnings), original),
+        ).rowcount
+        if inserted:
+            conn.executemany(
+                "INSERT INTO source_blocks (id, version_id, ordinal, data) VALUES (?, ?, ?, ?)",
+                ((block.id, version.id, block.ordinal, json.dumps(asdict(block), ensure_ascii=False))
+                 for block in version.blocks),
+            )
+        return bool(inserted)
 
     def version(self, version_id: str) -> Version:
         with closing(self._connect()) as conn:
@@ -179,11 +184,21 @@ class SqliteStore:
 
     def finish_file(self, batch_id: str, item: BatchFile) -> None:
         with closing(self._connect()) as conn, conn:
-            conn.execute(
-                """UPDATE ingest_batch_files SET version_id = ?, error = ?
-                   WHERE batch_id = ? AND path = ? AND version_id IS NULL""",
-                (item.version_id, item.error, batch_id, str(item.path)),
-            )
+            self._finish_file(conn, batch_id, item)
+
+    def save_batch_version(self, batch_id: str, path: Path, version: Version, original: bytes) -> Version:
+        with closing(self._connect()) as conn, conn:
+            inserted = self._insert_version(conn, version, original)
+            self._finish_file(conn, batch_id, BatchFile(path, version.id, None))
+        return version if inserted else self.version(version.id)
+
+    @staticmethod
+    def _finish_file(conn: sqlite3.Connection, batch_id: str, item: BatchFile) -> None:
+        conn.execute(
+            """UPDATE ingest_batch_files SET version_id = ?, error = ?
+               WHERE batch_id = ? AND path = ? AND version_id IS NULL""",
+            (item.version_id, item.error, batch_id, str(item.path)),
+        )
 
     def save_claims(self, claims: tuple[Claim, ...]) -> None:
         with closing(self._connect()) as conn, conn:

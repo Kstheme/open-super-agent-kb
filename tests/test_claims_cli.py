@@ -42,7 +42,10 @@ class ClaimsCliTests(unittest.TestCase):
         self.calls.append(method)
         if method == "GET":
             return {"data": [{"id": "fixed"}]}
-        content = json.dumps(self.responses.pop(0), ensure_ascii=False)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        content = json.dumps(response, ensure_ascii=False)
         return {"choices": [{"message": {"content": content}}],
                 "usage": {"prompt_tokens": 100, "completion_tokens": 50}}
 
@@ -77,6 +80,28 @@ class ClaimsCliTests(unittest.TestCase):
         self.assertTrue(result["rejected"][0]["reason"])
         self.assertEqual(self.command("claims", "list", self.version)["claims"], [])
 
+
+    def test_retry_failure_preserves_previously_verified_claim(self):
+        valid, = self.claim("出差结束后十五天内提交报销")["claims"]
+        invalid, = self.claim("虚构引文")["claims"]
+        invalid["text"] = "还需要另外提交审批单。"
+        self.responses = [{"claims": [valid, invalid]}, OSError("endpoint offline")]
+
+        result = self.command("claims", "extract", self.version, expected_exit=1)
+        self.assertEqual(result["state"], "failed")
+        self.assertIn("endpoint offline", result["error"])
+        self.assertEqual([item["text"] for item in result["rejected"]], [invalid["text"]])
+        saved, = self.command("claims", "list", self.version)["claims"]
+        self.assertEqual(saved["text"], valid["text"])
+        self.assertEqual(result["claims"], [saved])
+
+    def test_float_evidence_offset_is_rejected_without_crashing(self):
+        response = self.claim(self.block["text"])
+        response["claims"][0]["evidence"][0]["quote_start"] = 0.0
+        self.responses = [response, response, response]
+        result = self.command("claims", "extract", self.version, expected_exit=1)
+        self.assertIn("must be an integer", result["rejected"][0]["reason"])
+        self.assertEqual(self.command("claims", "list", self.version)["claims"], [])
 
     def test_omitting_invalid_claim_on_retry_keeps_rejection_reason(self):
         self.responses = [self.claim("虚构引文"), {"claims": []}, {"claims": []}]

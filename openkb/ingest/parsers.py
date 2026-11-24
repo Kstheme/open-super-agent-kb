@@ -135,6 +135,7 @@ def parse_pdf(data: bytes) -> ParsedDocument:
     active_heading = ()
     active_clause = None
     textless_pages = []
+    rotated_pages = []
     try:
         with open_pdf(BytesIO(data)) as document:
             for page in document.pages:
@@ -142,6 +143,9 @@ def parse_pdf(data: bytes) -> ParsedDocument:
                     textless_pages.append(page.page_number)
                     continue
                 upright = page.filter(lambda item: item.get("upright", True))
+                if any(not char.get("upright", True) and char["text"].strip()
+                       and char["top"] < page.bbox[1] + page.height * .9 for char in page.chars):
+                    rotated_pages.append(page.page_number)
                 for region in _page_regions(upright):
                     lines = region.extract_text_lines()
                     if lines and re.fullmatch(r"§\s*\d+(?:\.\d+)+", lines[0]["text"]):
@@ -171,13 +175,16 @@ def parse_pdf(data: bytes) -> ParsedDocument:
     except (PDFException, ValueError) as error:
         raise ValueError("Cannot parse PDF") from error
     if not blocks:
+        reason = "PDF 没有可提取的正文文本" if not rotated_pages else "PDF 旋转正文无法定位"
         return ParsedDocument(
             (ParsedBlock("", kind="document"),),
-            ("原文定位受限：PDF 没有可提取的文本，整份资料作为一个块。",),
+            (f"原文定位受限：{reason}，整份资料作为一个块。",),
         )
     warnings = ()
     if textless_pages:
         warnings = ("原文定位受限：以下 PDF 页没有可提取的文本：" + "、".join(map(str, textless_pages)),)
+    if rotated_pages:
+        warnings += ("原文定位受限：以下 PDF 页包含未导入的旋转文字：" + "、".join(map(str, rotated_pages)),)
     return ParsedDocument(tuple(blocks), warnings)
 
 

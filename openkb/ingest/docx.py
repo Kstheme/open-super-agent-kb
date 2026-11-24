@@ -86,6 +86,7 @@ class _WordDocument:
             next_merges = {}
             cells = []
             text_parts = []
+            offset = 0
             for cell in row.findall("w:tc", self._ns):
                 span = int(self._value(cell, "w:tcPr/w:gridSpan") or "1")
                 if span < 1:
@@ -97,11 +98,13 @@ class _WordDocument:
                               else active_merges.get((column, span)))
                     if origin is not None:
                         next_merges[column, span] = origin
-                cells.append(TableCell(column, span, origin))
-                text_parts.append(
+                text = (
                     "" if origin is not None and origin < row_index else
                     "\n".join(self._text(p) for p in cell.findall("w:p", self._ns)).strip()
                 )
+                cells.append(TableCell(column, span, origin, offset, offset + len(text)))
+                text_parts.append(text)
+                offset += len(text) + len(" | ")
                 column += span
             if any(text_parts):
                 yield ParsedBlock(

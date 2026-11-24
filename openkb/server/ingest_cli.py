@@ -6,8 +6,7 @@ from pathlib import Path
 from openkb.ingest.ledger import Ledger
 from openkb.ingest.sqlite import SqliteStore
 
-from . import evidence_cli
-from . import batch_cli
+from . import batch_cli, evidence_cli
 
 
 def configure(commands) -> argparse.ArgumentParser:
