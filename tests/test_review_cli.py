@@ -137,6 +137,28 @@ class ReviewCliTests(ReviewCliCase):
         self.assertNotIn("data_tables", {move["item_id"] for move in result["rebased_evidence"]})
         self.assertEqual(result["proposals"], [])
 
+    def test_two_structural_replacements_leave_evidence_unresolved(self):
+        path = write_word(
+            self.root / "section508-uncertain.docx",
+            ("Repeat headers in multi-page tables.", "Repeat headers in wide tables."),
+        )
+
+        result = self.run_review(path)
+
+        affected, = result["affected"]
+        self.assertEqual(affected["item_id"], "data_tables")
+        change, = affected["changes"]
+        self.assertEqual(change["status"], "ambiguous")
+        self.assertEqual(len(change["candidate_blocks"]), 2)
+        self.assertEqual(result["alignment_warnings"], [{
+            "kind": "uncertain_evidence_alignment",
+            "before_block_ids": [change["old_evidence"]["block_id"]],
+            "after_block_ids": [block["id"] for block in change["candidate_blocks"]],
+        }])
+        judgment, = result["judgments"]
+        self.assertEqual(judgment["judgment"], "needs_human")
+        self.assertEqual(result["proposals"], [])
+
     def test_selected_version_must_be_evidence_for_the_artifact(self):
         path = write_word(self.root / "section508-other.docx", (TABLE_RULE,))
         unrelated = self.command("ingest", "add", path, "--document", "unrelated")
