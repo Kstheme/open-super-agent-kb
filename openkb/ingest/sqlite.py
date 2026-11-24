@@ -1,11 +1,14 @@
 import json
 import sqlite3
-from collections.abc import Sequence
-from contextlib import closing
+from collections.abc import Iterator, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import asdict
 from pathlib import Path
 
+from openkb.core.delivery import DeliveryConflict
+
 from .claims import Claim
+from .ledger import StoreError
 from .model import Block, Evidence, Locator, TableCell, Version
 from .batch import BatchFile
 
@@ -70,6 +73,31 @@ CREATE TABLE IF NOT EXISTS ledger_claim_evidence (
 """
 
 
+_DELIVERY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS deliver_tasks (
+    id TEXT PRIMARY KEY,
+    skeleton_json TEXT NOT NULL,
+    result_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS skeleton_proposals (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES deliver_tasks(id),
+    title TEXT NOT NULL,
+    state TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS skeleton_proposals_task ON skeleton_proposals(task_id);
+CREATE TABLE IF NOT EXISTS delivery_conflicts (
+    id TEXT PRIMARY KEY,
+    slot_id TEXT NOT NULL,
+    source_version TEXT NOT NULL REFERENCES source_versions(id),
+    reason TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('open', 'resolved'))
+);
+CREATE INDEX IF NOT EXISTS open_delivery_conflicts_version
+    ON delivery_conflicts(source_version) WHERE state = 'open';
+"""
+
+
 def _block(data: str) -> Block:
     fields = json.loads(data)
     fields["heading_path"] = tuple(fields["heading_path"])
@@ -82,11 +110,20 @@ def _block(data: str) -> Block:
     return Block(**fields)
 
 
+@contextmanager
+def open_delivery_store(path: Path) -> Iterator["SqliteStore"]:
+    """Expose delivery storage failures through the ledger boundary."""
+    try:
+        yield SqliteStore(path)
+    except sqlite3.Error as error:
+        raise StoreError(str(error)) from error
+
+
 class SqliteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(_SCHEMA + _CLAIM_SCHEMA)
+            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -249,3 +286,82 @@ class SqliteStore:
                 evidence = records.setdefault(row[:4], [])
                 evidence.append(Evidence(*row[4:]))
         return tuple(Claim(*fields, tuple(evidence)) for fields, evidence in records.items())
+
+    def save_delivery(self, task: dict) -> tuple[DeliveryConflict, ...]:
+        payload = {key: value for key, value in task.items() if key not in {"skeleton", "skeleton_proposals"}}
+        with closing(self._connect()) as conn, conn:
+            if task["state"] == "done":
+                conn.execute("BEGIN IMMEDIATE")
+                conflicts = self._open_delivery_conflicts(conn, task["sources"])
+                if conflicts:
+                    return conflicts
+            conn.execute(
+                "INSERT INTO deliver_tasks (id, skeleton_json, result_json) VALUES (?, ?, ?)",
+                (task["id"], json.dumps(task["skeleton"], ensure_ascii=False),
+                 json.dumps(payload, ensure_ascii=False)),
+            )
+        return ()
+
+    def flag_delivery_conflict(self, conflict: DeliveryConflict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                """INSERT INTO delivery_conflicts (id, slot_id, source_version, reason, state)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (conflict.id, conflict.slot_id, conflict.source_version, conflict.reason, conflict.state),
+            )
+
+    def resolve_delivery_conflict(self, conflict_id: str) -> DeliveryConflict:
+        with closing(self._connect()) as conn, conn:
+            conn.execute("UPDATE delivery_conflicts SET state = 'resolved' WHERE id = ?", (conflict_id,))
+            row = conn.execute(
+                "SELECT id, slot_id, source_version, reason, state FROM delivery_conflicts WHERE id = ?",
+                (conflict_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown delivery conflict: {conflict_id}")
+            return DeliveryConflict(*row)
+
+    def open_delivery_conflicts(self, source_versions: Sequence[str]) -> tuple[DeliveryConflict, ...]:
+        with closing(self._connect()) as conn:
+            return self._open_delivery_conflicts(conn, source_versions)
+
+    @staticmethod
+    def _open_delivery_conflicts(
+        conn: sqlite3.Connection, source_versions: Sequence[str],
+    ) -> tuple[DeliveryConflict, ...]:
+        if not source_versions:
+            return ()
+        parameters = ", ".join("?" for _ in source_versions)
+        rows = conn.execute(
+            f"""SELECT id, slot_id, source_version, reason, state FROM delivery_conflicts
+                WHERE state = 'open' AND source_version IN ({parameters}) ORDER BY rowid""",
+            source_versions,
+        )
+        return tuple(DeliveryConflict(*row) for row in rows)
+
+    def delivery(self, task_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT skeleton_json, result_json FROM deliver_tasks WHERE id = ?", (task_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown delivery task: {task_id}")
+            proposals = conn.execute(
+                "SELECT id, task_id, title, state FROM skeleton_proposals WHERE task_id = ? ORDER BY rowid",
+                (task_id,),
+            )
+            return {
+                **json.loads(row[1]),
+                "skeleton": json.loads(row[0]),
+                "skeleton_proposals": [
+                    {"id": proposal_id, "task_id": task_id, "title": title, "state": state}
+                    for proposal_id, task_id, title, state in proposals
+                ],
+            }
+
+    def save_skeleton_proposal(self, proposal: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO skeleton_proposals (id, task_id, title, state) VALUES (?, ?, ?, ?)",
+                (proposal["id"], proposal["task_id"], proposal["title"], proposal["state"]),
+            )

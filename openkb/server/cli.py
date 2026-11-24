@@ -13,7 +13,7 @@ from openkb.eval.regenerate import REGENERATE_NOTE, RegenerateReviewSystem
 from openkb.eval.runner import run_goldset
 from openkb.eval.thresholds import load_thresholds
 
-from . import claims_cli, ingest_cli
+from . import claims_cli, deliver_cli, ingest_cli
 
 
 def _write_report(path: Path, content: str) -> None:
@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     ingest = ingest_cli.configure(commands)
     claims = claims_cli.configure(commands)
+    deliver = deliver_cli.configure(commands)
     evaluate = commands.add_parser("eval", help="Evaluate a review system")
     eval_commands = evaluate.add_subparsers(dest="eval_command", required=True)
     run = eval_commands.add_parser("run", help="Run a review system against a gold set")
@@ -56,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "claims":
         return claims_cli.run(args, claims)
 
+    if args.command == "deliver":
+        return deliver_cli.run(args, deliver)
     if args.eval_command == "compare":
         try:
             print(compare_reports(load_report(args.report_a), load_report(args.report_b)))
