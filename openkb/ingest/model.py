@@ -56,3 +56,22 @@ class Version:
     normalization_version: str
     blocks: tuple[Block, ...]
     warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Evidence:
+    id: str
+    version_id: str
+    block_id: str
+    quote: str
+    quote_start: int
+    quote_end: int
+    quote_hash: str
+
+
+@dataclass(frozen=True)
+class LocatedEvidence(Evidence):
+    document_id: str
+    original_name: str
+    content_hash: str
+    locator: Locator

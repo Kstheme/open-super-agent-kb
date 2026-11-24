@@ -6,6 +6,8 @@ from pathlib import Path
 from openkb.ingest.ledger import Ledger
 from openkb.ingest.sqlite import SqliteStore
 
+from . import evidence_cli
+
 
 def configure(commands) -> argparse.ArgumentParser:
     ingest = commands.add_parser("ingest", help="Import local documents and inspect their versions")
@@ -23,6 +25,7 @@ def configure(commands) -> argparse.ArgumentParser:
     original.add_argument("--out", type=Path, required=True)
     for command in (add, show, align, original):
         command.add_argument("--database", type=Path, required=True)
+    evidence_cli.configure(subcommands)
     return ingest
 
 
@@ -36,6 +39,8 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             result = asdict(ledger.version(args.version))
         elif args.ingest_command == "align":
             result = ledger.align(args.before, args.after)
+        elif args.ingest_command.startswith("evidence-"):
+            result = evidence_cli.run(args, ledger)
         else:
             data = ledger.original(args.version)
             with args.out.open("xb") as target:

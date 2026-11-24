@@ -4,7 +4,7 @@ from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 
-from .model import Block, Locator, TableCell, Version
+from .model import Block, Evidence, Locator, TableCell, Version
 
 
 _SCHEMA = """
@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS source_blocks (
     ordinal INTEGER NOT NULL,
     data TEXT NOT NULL,
     UNIQUE (version_id, ordinal)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS source_blocks_version_id ON source_blocks(version_id, id);
+CREATE TABLE IF NOT EXISTS source_evidence (
+    id TEXT PRIMARY KEY,
+    version_id TEXT NOT NULL,
+    block_id TEXT NOT NULL,
+    quote TEXT NOT NULL,
+    quote_start INTEGER NOT NULL CHECK (quote_start >= 0),
+    quote_end INTEGER NOT NULL CHECK (quote_end > quote_start),
+    quote_hash TEXT NOT NULL,
+    FOREIGN KEY (version_id, block_id) REFERENCES source_blocks (version_id, id)
 );
 """
 
@@ -91,3 +102,29 @@ class SqliteStore:
             if data is None:
                 raise KeyError(f"Unknown version: {version_id}")
             return data[0]
+
+    def save_evidence(self, evidence: Evidence) -> Evidence:
+        with closing(self._connect()) as conn, conn:
+            self._insert_evidence(conn, evidence)
+        return evidence
+
+    @staticmethod
+    def _insert_evidence(conn: sqlite3.Connection, evidence: Evidence) -> None:
+        conn.execute(
+            """INSERT INTO source_evidence
+               (id, version_id, block_id, quote, quote_start, quote_end, quote_hash)
+               VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
+            (evidence.id, evidence.version_id, evidence.block_id, evidence.quote,
+             evidence.quote_start, evidence.quote_end, evidence.quote_hash),
+        )
+
+    def evidence(self, evidence_id: str) -> Evidence:
+        with closing(self._connect()) as conn:
+            fields = conn.execute(
+                """SELECT id, version_id, block_id, quote, quote_start, quote_end, quote_hash
+                   FROM source_evidence WHERE id = ?""",
+                (evidence_id,),
+            ).fetchone()
+        if fields is None:
+            raise KeyError(f"Unknown evidence: {evidence_id}")
+        return Evidence(*fields)

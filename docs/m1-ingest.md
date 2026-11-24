@@ -46,3 +46,11 @@ uv run python -m unittest discover -s tests -p test_ingest_cli.py -v
 ```powershell
 uv run python -m unittest discover -s tests -p test_ingest_docx.py -v
 ```
+
+## 证据回点
+
+使用建库时的 SQLite 数据库。从 `openkb ingest show` 的版本结果选一个块，使用 `openkb ingest evidence-add VERSION BLOCK --quote QUOTE --database PATH` 保存原文片段。片段必须精确匹配该版本的选定块。若同一片段在块内出现多次，用 `--quote-start` 指明零起始的字符偏移。保存相同片段和偏移会返回相同证据 ID。
+
+用 `openkb ingest evidence-show EVIDENCE --database PATH` 返回原文件名、资料和版本 ID、原文件哈希、引文、块内字符范围及定位信息。PDF 使用页号及 PDF 块范围，DOCX 使用正文段落或表格行，Markdown 使用原始行号。旧版证据可结合返回的版本 ID 用 `openkb ingest original` 取回原始文件。
+
+验收使用固定公开资料，以 PDF、DOCX、Markdown 各 4 条人工预标注引文验证来源、版本和位置。将 Markdown 原文从第 106 行移到第 112 行后，旧证据仍指向原版本第 106 行，导出的旧文件可核对原文。
