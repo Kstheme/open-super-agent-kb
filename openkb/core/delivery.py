@@ -28,9 +28,20 @@ class Coverage:
     evidence: tuple[LocatedEvidence, ...]
 
 
+@dataclass(frozen=True)
+class DeliveryConflict:
+    id: str
+    slot_id: str
+    source_version: str
+    reason: str
+    state: str = "open"
+
+
 def execute_delivery(
     skeleton: tuple[Slot, ...],
     find_coverage: Callable[[Slot], Coverage | None],
+    find_conflicts: Callable[[], tuple[DeliveryConflict, ...]],
+    save_completed: Callable[[dict], tuple[DeliveryConflict, ...]],
     *,
     max_steps: int = MAX_STEPS,
 ) -> dict:
@@ -38,17 +49,46 @@ def execute_delivery(
         raise ValueError(f"Step budget must be between 0 and {MAX_STEPS}")
 
     pending = deque(skeleton)
-    covered = {}
+    covered: dict[str, Coverage] = {}
     steps = 0
     started = monotonic()
-    pause_reason = None
-    while pending:
+    conflicts = find_conflicts()
+
+    def remove_conflicted_slots() -> None:
+        blocked = {conflict.slot_id for conflict in conflicts}
+        for slot in skeleton:
+            if slot.id in blocked and covered.pop(slot.id, None) is not None:
+                pending.append(slot)
+
+    def snapshot(state: str, pause_reason: str | None = None) -> dict:
+        return {
+            "state": state,
+            "pause_reason": pause_reason,
+            "covered": [asdict(covered[slot.id]) for slot in skeleton if slot.id in covered],
+            "gaps": [asdict(slot) for slot in skeleton if slot.id not in covered],
+            "conflicts": [asdict(conflict) for conflict in conflicts],
+            "budget": {
+                "steps": steps,
+                "max_steps": max_steps,
+                "tokens": 0,
+                "max_tokens": MAX_TOKENS,
+                "max_wall_seconds": MAX_WALL_SECONDS,
+            },
+        }
+
+    while True:
+        if not pending:
+            result = snapshot("done")
+            conflicts = save_completed(result)
+            if not conflicts:
+                return result
+            # Saving completion rechecks the ledger under its write lock.
+            remove_conflicted_slots()
+
         if monotonic() - started >= MAX_WALL_SECONDS:
-            pause_reason = "wall clock budget exhausted"
-            break
+            return snapshot("paused", "wall clock budget exhausted")
         if steps >= max_steps:
-            pause_reason = "step budget exhausted"
-            break
+            return snapshot("paused", "step budget exhausted")
         slot = pending.popleft()
         steps += 1
         coverage = find_coverage(slot)
@@ -59,17 +99,5 @@ def execute_delivery(
                 raise ValueError("Coverage does not match the requested slot")
             covered[slot.id] = coverage
 
-    gaps = [asdict(slot) for slot in skeleton if slot.id not in covered]
-    return {
-        "state": "paused" if gaps else "done",
-        "pause_reason": pause_reason,
-        "covered": [asdict(covered[slot.id]) for slot in skeleton if slot.id in covered],
-        "gaps": gaps,
-        "budget": {
-            "steps": steps,
-            "max_steps": max_steps,
-            "tokens": 0,
-            "max_tokens": MAX_TOKENS,
-            "max_wall_seconds": MAX_WALL_SECONDS,
-        },
-    }
+        conflicts = find_conflicts()
+        remove_conflicted_slots()

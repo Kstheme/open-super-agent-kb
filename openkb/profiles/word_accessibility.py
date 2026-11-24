@@ -117,6 +117,10 @@ def _same_basis(
     )
 
 
+def supports_slot(source: Version, slot_id: str) -> bool:
+    return source.original_name.casefold() == RULES[slot_id].source
+
+
 def find_coverage(
     slot: Slot,
     sources: tuple[Version, ...],
@@ -125,7 +129,7 @@ def find_coverage(
 ) -> Coverage | None:
     rule = RULES[slot.id]
     for version in sources:
-        if version.original_name.casefold() != rule.source:
+        if not supports_slot(version, slot.id):
             continue
         evidence = _source_evidence(version, rule)
         if not evidence:
