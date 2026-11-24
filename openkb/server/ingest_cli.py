@@ -7,6 +7,7 @@ from openkb.ingest.ledger import Ledger
 from openkb.ingest.sqlite import SqliteStore
 
 from . import evidence_cli
+from . import batch_cli
 
 
 def configure(commands) -> argparse.ArgumentParser:
@@ -26,13 +27,17 @@ def configure(commands) -> argparse.ArgumentParser:
     for command in (add, show, align, original):
         command.add_argument("--database", type=Path, required=True)
     evidence_cli.configure(subcommands)
+    batch_cli.configure(subcommands)
     return ingest
 
 
 def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
-        ledger = Ledger(SqliteStore(args.database))
-        if args.ingest_command == "add":
+        store = SqliteStore(args.database)
+        ledger = Ledger(store)
+        if args.ingest_command in batch_cli.COMMANDS:
+            result = batch_cli.run(args, store)
+        elif args.ingest_command == "add":
             result = asdict(ledger.add(args.source, args.document))
             result["block_count"] = len(result.pop("blocks"))
         elif args.ingest_command == "show":
@@ -49,4 +54,8 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     except (KeyError, OSError, ValueError) as error:
         parser.error(str(error))
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    if args.ingest_command in batch_cli.COMMANDS and result.get("interrupted"):
+        return 130
+    if args.ingest_command in batch_cli.COMMANDS and args.ingest_command != "status" and result["failures"]:
+        return 1
     return 0

@@ -54,3 +54,18 @@ uv run python -m unittest discover -s tests -p test_ingest_docx.py -v
 用 `openkb ingest evidence-show EVIDENCE --database PATH` 返回原文件名、资料和版本 ID、原文件哈希、引文、块内字符范围及定位信息。PDF 使用页号及 PDF 块范围，DOCX 使用正文段落或表格行，Markdown 使用原始行号。旧版证据可结合返回的版本 ID 用 `openkb ingest original` 取回原始文件。
 
 验收使用固定公开资料，以 PDF、DOCX、Markdown 各 4 条人工预标注引文验证来源、版本和位置。将 Markdown 原文从第 106 行移到第 112 行后，旧证据仍指向原版本第 106 行，导出的旧文件可核对原文。
+
+## 批量建库与恢复
+
+批次创建时按路径排序并固定目录中支持的文件。CLI 把尝试进度写到标准错误流，把包含批次 ID、完成数、待处理数及失败原因的 JSON 写到标准输出。每个文件完成后都会保存记录。批次通过 `--limit` 设置本次最多尝试的文件数。
+
+```powershell
+uv run openkb ingest batch ./documents --database kb.sqlite --limit 50
+uv run openkb ingest status <批次ID> --database kb.sqlite
+uv run openkb ingest resume <批次ID> --database kb.sqlite
+uv run openkb ingest retry <批次ID> ./documents/repaired.docx --database kb.sqlite
+```
+
+中断后可从标准错误流的进度找到批次 ID。恢复跳过已完成的文件，并保留失败清单。替换坏文件后用同一路径指定单文件重试。待处理文件存在时状态为 `paused`，文件全部处理后根据是否还有失败返回 `done` 或 `failed`。批量命令有文件失败时退出码为 1，捕获 Ctrl+C 时为 130。状态查询成功时返回 0。
+
+为运行真实 100 份资料的验收，按 [资料清单说明](../goldsets/m1-batch-samples/README.md) 准备输入，并将 `OPENKB_M1_BATCH` 设为资料目录。运行 `uv run python -m unittest discover -s tests -p test_ingest_batch.py -v`。

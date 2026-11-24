@@ -1,10 +1,12 @@
 import json
 import sqlite3
+from collections.abc import Sequence
 from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 
 from .model import Block, Evidence, Locator, TableCell, Version
+from .batch import BatchFile
 
 
 _SCHEMA = """
@@ -37,6 +39,16 @@ CREATE TABLE IF NOT EXISTS source_evidence (
     quote_end INTEGER NOT NULL CHECK (quote_end > quote_start),
     quote_hash TEXT NOT NULL,
     FOREIGN KEY (version_id, block_id) REFERENCES source_blocks (version_id, id)
+);
+CREATE TABLE IF NOT EXISTS ingest_batch_files (
+    batch_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    version_id TEXT REFERENCES source_versions(id),
+    error TEXT,
+    PRIMARY KEY (batch_id, path),
+    UNIQUE (batch_id, ordinal),
+    CHECK (version_id IS NULL OR error IS NULL)
 );
 """
 
@@ -128,3 +140,29 @@ class SqliteStore:
         if fields is None:
             raise KeyError(f"Unknown evidence: {evidence_id}")
         return Evidence(*fields)
+    def start_batch(self, batch_id: str, paths: Sequence[Path]) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.executemany(
+                "INSERT INTO ingest_batch_files (batch_id, ordinal, path) VALUES (?, ?, ?)",
+                ((batch_id, index, str(path)) for index, path in enumerate(paths, 1)),
+            )
+
+    def batch_files(self, batch_id: str) -> tuple[BatchFile, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT path, version_id, error FROM ingest_batch_files
+                   WHERE batch_id = ? ORDER BY ordinal""",
+                (batch_id,),
+            )
+            files = tuple(BatchFile(Path(path), version_id, error) for path, version_id, error in rows)
+        if not files:
+            raise KeyError(f"Unknown ingest batch: {batch_id}")
+        return files
+
+    def finish_file(self, batch_id: str, item: BatchFile) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                """UPDATE ingest_batch_files SET version_id = ?, error = ?
+                   WHERE batch_id = ? AND path = ? AND version_id IS NULL""",
+                (item.version_id, item.error, batch_id, str(item.path)),
+            )
