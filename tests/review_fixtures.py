@@ -1,0 +1,83 @@
+"""Minimal OOXML fixtures for the public M3 review CLI."""
+
+from contextlib import redirect_stdout
+import io
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import TestCase
+from xml.sax.saxutils import escape
+from zipfile import ZipFile
+
+from openkb.server.cli import main
+
+
+WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+REQUEST = "请基于已入库的 Section 508 资料，为非网页 Word 文档生成一份无障碍自查清单。"
+TABLE_RULE = "Tables repeat their header row."
+
+
+def paragraph(text, *, heading=False):
+    style = '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>' if heading else ""
+    return f"<w:p>{style}<w:r><w:t>{escape(text)}</w:t></w:r></w:p>"
+
+
+def section(title, *quotes):
+    rows = "".join(f"<w:tr><w:tc>{paragraph(quote)}</w:tc></w:tr>" for quote in quotes)
+    return paragraph(title, heading=True) + f"<w:tbl>{rows}</w:tbl>"
+
+
+def write_docx(path, body):
+    with ZipFile(path, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{WORD_NAMESPACE}"><w:body>{body}</w:body></w:document>',
+        )
+    return path
+
+
+def write_word(path, table_quotes=(TABLE_RULE,), *, prefix=""):
+    body = (
+        prefix
+        + section(
+            "Headings",
+            "The document uses MS Word heading styles.",
+            'Headings in the "Navigation pane" match the document\'s visual outline.',
+        )
+        + section("Data Tables", *table_quotes)
+        + section("Images and other Objects", "Images/objects have Alt Text or described in context.")
+    )
+    return write_docx(path, body)
+
+
+class ReviewCliCase(TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.database = self.root / "ledger.sqlite"
+        policy = write_docx(
+            self.root / "508-applicability-checklist.docx",
+            paragraph("☐2.4.1 Bypass Blocks (not required for non-web documents and software)"),
+        )
+        word = write_word(self.root / "section508-word.docx")
+        self.scope_version = self.command("ingest", "add", policy, "--document", "section508-policy")
+        self.word_version = self.command("ingest", "add", word, "--document", "section508-word")
+        self.delivery = self.command(
+            "deliver", "run", REQUEST,
+            "--source", self.scope_version["id"], "--source", self.word_version["id"],
+        )
+        self.assertEqual(self.delivery["state"], "done")
+        self.artifact_id = self.delivery["artifact"]["id"]
+
+    def command(self, *args, expected_exit=0):
+        with redirect_stdout(io.StringIO()) as output:
+            status = main([*map(str, args), "--database", str(self.database)])
+        self.assertEqual(status, expected_exit, output.getvalue())
+        return json.loads(output.getvalue())
+
+    def run_review(self, new_file, *args, expected_exit=0):
+        return self.command(
+            "review", "run", self.artifact_id, self.word_version["id"], new_file,
+            *args, expected_exit=expected_exit,
+        )

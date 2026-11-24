@@ -98,6 +98,17 @@ CREATE INDEX IF NOT EXISTS open_delivery_conflicts_version
 """
 
 
+_REVIEW_SCHEMA = """
+CREATE TABLE IF NOT EXISTS review_tasks (
+    id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL REFERENCES deliver_tasks(id),
+    before_version TEXT NOT NULL REFERENCES source_versions(id),
+    after_version TEXT NOT NULL REFERENCES source_versions(id),
+    result_json TEXT NOT NULL
+);
+"""
+
+
 def _block(data: str) -> Block:
     fields = json.loads(data)
     fields["heading_path"] = tuple(fields["heading_path"])
@@ -123,7 +134,7 @@ class SqliteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA)
+            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA + _REVIEW_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -365,3 +376,27 @@ class SqliteStore:
                 "INSERT INTO skeleton_proposals (id, task_id, title, state) VALUES (?, ?, ?, ?)",
                 (proposal["id"], proposal["task_id"], proposal["title"], proposal["state"]),
             )
+
+    def artifact(self, artifact_id: str) -> dict:
+        snapshot = self.delivery(artifact_id)["artifact"]
+        if snapshot is None:
+            raise ValueError(f"Delivery task has no completed artifact: {artifact_id}")
+        return snapshot
+
+    def save_review(self, review: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO review_tasks (id, artifact_id, before_version, after_version, result_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (review["id"], review["artifact_id"], review["before_version"], review["after_version"],
+                 json.dumps(review, ensure_ascii=False)),
+            )
+
+    def review(self, review_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT result_json FROM review_tasks WHERE id = ?", (review_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown review: {review_id}")
+            return json.loads(row[0])
