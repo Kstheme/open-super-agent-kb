@@ -9,7 +9,7 @@ from uuid import uuid4
 from openkb.core.delivery import MAX_STEPS, execute_delivery
 from openkb.ingest.ledger import Ledger
 from openkb.ingest.sqlite import SqliteStore
-from openkb.profiles.word_accessibility import SKELETON, find_coverage
+from openkb.profiles.word_accessibility import CHECKLIST_TITLE, SKELETON, find_coverage
 
 
 def configure(commands) -> argparse.ArgumentParser:
@@ -52,13 +52,25 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                 partial(find_coverage, sources=sources, ledger=ledger, claims=store),
                 max_steps=args.max_steps,
             )
+            task_id = uuid4().hex
+            artifact = None
+            if result["state"] == "done":
+                artifact = {
+                    "id": task_id,
+                    "kind": "checklist",
+                    "title": CHECKLIST_TITLE,
+                    "items": [
+                        {**coverage, "title": slot.title}
+                        for slot, coverage in zip(SKELETON, result["covered"], strict=True)
+                    ],
+                }
             data = {
-                "id": uuid4().hex,
+                "id": task_id,
                 "kind": "deliver",
                 "message": message,
                 "sources": source_ids,
                 "skeleton": [asdict(slot) for slot in SKELETON],
-                "artifact": None,
+                "artifact": artifact,
                 "skeleton_proposals": [],
                 **result,
             }
