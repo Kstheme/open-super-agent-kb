@@ -1,9 +1,33 @@
-"""Judge changes using scoped evidence and the caller's shared model budget."""
+"""Scope review candidates and ground material judgments in source evidence."""
 
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import asdict, dataclass
 import json
+from typing import TypeVar
 
 from .model import BudgetSession, Generation
+
+
+CandidateKey = TypeVar("CandidateKey", bound=Hashable)
+Block = TypeVar("Block")
+Proof = TypeVar("Proof")
+
+
+def eligible_candidates(
+    changed: Iterable[tuple[CandidateKey, Block]], *, ambiguous: bool,
+) -> dict[CandidateKey, Block]:
+    """A material judgment needs changed blocks and an unambiguous trace."""
+    return {} if ambiguous else dict(changed)
+
+
+def proposal_evidence(
+    cited: Iterable[Proof], retained: Iterable[Proof], *, identity: Callable[[Proof], Hashable],
+) -> tuple[Proof, ...]:
+    """Keep validated citations first, then add unchanged supporting evidence."""
+    evidence = {identity(proof): proof for proof in cited}
+    for proof in retained:
+        evidence.setdefault(identity(proof), proof)
+    return tuple(evidence.values())
 
 
 @dataclass(frozen=True)

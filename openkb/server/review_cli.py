@@ -1,5 +1,6 @@
 import argparse
 import json
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
@@ -7,9 +8,9 @@ from time import monotonic
 from uuid import uuid4
 
 from openkb.agent.model import EndpointError, ModelClient, load_model_config
-from openkb.agent.review import ReviewCandidate, judge_change
+from openkb.agent.review import ReviewCandidate, eligible_candidates, judge_change, proposal_evidence
 from openkb.core.delivery import MAX_STEPS, MAX_TOKENS, MAX_WALL_SECONDS
-from openkb.core.review import trace_review
+from openkb.core.review import trace_blocks
 from openkb.ingest.ledger import EvidenceValidator, Ledger, StoreError
 from openkb.ingest.model import Evidence, Version
 from openkb.ingest.sqlite import SqliteStore, open_delivery_store
@@ -78,11 +79,12 @@ def _judge_affected(
     jobs = []
     for entry in report["affected"]:
         changes = entry["changes"]
-        candidates = {
-            block["id"]: block for change in changes for block in change["candidate_blocks"]
-        }
         ambiguous = any(change["status"] == "ambiguous" for change in changes)
-        if candidates and not ambiguous:
+        candidates = eligible_candidates(
+            ((block["id"], block) for change in changes for block in change["candidate_blocks"]),
+            ambiguous=ambiguous,
+        )
+        if candidates:
             jobs.append((entry, candidates))
         else:
             reason = "新版证据的块对齐存在歧义。" if ambiguous else "新版缺少可核对的替代依据。"
@@ -154,11 +156,11 @@ def _judge_affected(
             if monotonic() >= deadline:
                 _pause_review(report, pending[index:])
                 break
-            evidence = {
-                proof.id: _located(proof, source, blocks[proof.block_id]) for proof in proofs
-            }
-            for proof in retained.get(item_id, ()):
-                evidence.setdefault(proof["id"], proof)
+            evidence = proposal_evidence(
+                (_located(proof, source, blocks[proof.block_id]) for proof in proofs),
+                retained.get(item_id, ()),
+                identity=lambda proof: proof["id"],
+            )
             report["proposals"].append({
                 "id": uuid4().hex,
                 "item_id": item_id,
@@ -167,7 +169,7 @@ def _judge_affected(
                 "old_item": item,
                 "revised_text": judgment["revised_text"].strip(),
                 "revised_method": judgment["revised_method"].strip(),
-                "evidence": list(evidence.values()),
+                "evidence": list(evidence),
             })
         reason = judgment["reason"].strip()
         if judgment["judgment"] == "needs_human":
@@ -180,24 +182,47 @@ def _judge_affected(
 
 
 def _trace_source(
-    items: list[dict], cited_versions: tuple[str, ...], after: str, ledger: Ledger,
+    items: list[dict], citations_by_version: dict[str, list[tuple[str, dict]]], after: str, ledger: Ledger,
     rebase: Callable[[dict, dict], dict | None],
 ) -> dict:
-    affected = {}
+    changes = defaultdict(list)
     rebased = []
     warnings = []
-    for cited_version in cited_versions:
-        trace = trace_review(items, ledger.align(cited_version, after), rebase)
-        rebased.extend(trace["rebased_evidence"])
-        warnings.extend(trace["alignment_warnings"])
-        for entry in trace["affected"]:
-            item_id = entry["item_id"]
-            if item_id in affected:
-                affected[item_id]["changes"].extend(entry["changes"])
-            else:
-                affected[item_id] = entry
+    for cited_version, citations in citations_by_version.items():
+        if cited_version == after:
+            continue
+        traces, alignment_warnings = trace_blocks(
+            ledger.align(cited_version, after), (evidence["block_id"] for _, evidence in citations),
+        )
+        warnings.extend(alignment_warnings)
+        for item_id, evidence in citations:
+            block_id = evidence["block_id"]
+            trace = traces[block_id]
+            status = trace.status
+            if status == "unchanged":
+                located = rebase(evidence, trace.candidates[0])
+                if located is not None:
+                    rebased.append({"item_id": item_id, "old_evidence": evidence, "new_evidence": located})
+                    continue
+                status = "ambiguous"
+            if trace.uncertain_replacement or trace.status == "unchanged":
+                warnings.append({
+                    "kind": "uncertain_evidence_alignment",
+                    "before_block_ids": [block_id],
+                    "after_block_ids": [block["id"] for block in trace.candidates],
+                })
+            changes[item_id].append({
+                "old_evidence": evidence,
+                "before_block": trace.before,
+                "status": status,
+                "candidate_blocks": trace.candidates,
+            })
     return {
-        "affected": [affected[item["slot_id"]] for item in items if item["slot_id"] in affected],
+        "affected": [
+            {"item_id": item["slot_id"], "claim_id": item["claim_id"], "item": item,
+             "changes": changes[item["slot_id"]]}
+            for item in items if item["slot_id"] in changes
+        ],
         "rebased_evidence": rebased,
         "alignment_warnings": warnings,
     }
@@ -208,11 +233,12 @@ def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
     artifact = store.artifact(args.artifact)
     ledger = Ledger(store)
     before = ledger.version(args.before_version)
-    cited_versions = tuple(dict.fromkeys(
-        evidence["version_id"] for item in artifact["items"] for evidence in item["evidence"]
-        if evidence["document_id"] == before.document_id
-    ))
-    if not cited_versions:
+    citations_by_version = defaultdict(list)
+    for item in artifact["items"]:
+        for evidence in item["evidence"]:
+            if evidence["document_id"] == before.document_id:
+                citations_by_version[evidence["version_id"]].append((item["slot_id"], evidence))
+    if not citations_by_version:
         raise ValueError("The selected source document is not used by this artifact")
     after = ledger.add(args.new_file, before.document_id)
     validator = EvidenceValidator(after)
@@ -234,7 +260,7 @@ def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
         "before_version": before.id,
         "after_version": after.id,
         "normalization_version": after.normalization_version,
-        **_trace_source(artifact["items"], cited_versions, after.id, ledger, rebase),
+        **_trace_source(artifact["items"], citations_by_version, after.id, ledger, rebase),
         "judgments": [],
         "proposals": [],
         "model_id": None,

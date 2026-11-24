@@ -2,7 +2,9 @@
 
 from bisect import bisect_left
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Literal
 
 
 def align_blocks(before: list[dict], after: list[dict]) -> dict:
@@ -41,18 +43,16 @@ def _structural_candidates(block: dict, added: list[dict], anchors: list[dict], 
     ]
 
 
-def trace_review(
-    items: list[dict],
-    alignment: dict,
-    rebase: Callable[[dict, dict], dict | None],
-) -> dict:
-    """Derive affected items from recorded evidence and deterministic block alignment."""
-    result = {"affected": [], "rebased_evidence": [], "alignment_warnings": []}
-    before_version = alignment["before_version"]
-    after_version = alignment["after_version"]
-    if before_version == after_version:
-        return result
+@dataclass(frozen=True)
+class BlockTrace:
+    before: dict
+    status: Literal["unchanged", "changed", "ambiguous", "removed"]
+    candidates: list[dict]
+    uncertain_replacement: bool = False
 
+
+def trace_blocks(alignment: dict, block_ids: Iterable[str]) -> tuple[dict[str, BlockTrace], list[dict]]:
+    """Resolve cited blocks against an alignment, independently of their evidence or artifact."""
     anchors = sorted(alignment["matches"], key=lambda pair: pair["before"]["ordinal"])
     ordinals = [pair["before"]["ordinal"] for pair in anchors]
     matched = {pair["before"]["id"]: pair for pair in anchors}
@@ -62,7 +62,7 @@ def trace_review(
         for group in alignment["ambiguous"]
         for block in group["before"]
     }
-    warnings = result["alignment_warnings"]
+    warnings = []
     for group in alignment["ambiguous"]:
         warnings.append({
             "kind": "ambiguous_block_key",
@@ -70,52 +70,23 @@ def trace_review(
             "before_block_ids": [block["id"] for block in group["before"]],
             "after_block_ids": [block["id"] for block in group["after"]],
         })
-    for side, alerts in alignment["warnings"].items():
+    for side, alerts in alignment.get("warnings", {}).items():
         warnings.extend({"kind": "source_warning", "side": side, "message": alert} for alert in alerts)
 
-    for item in items:
-        changes = []
-        item_id = item["slot_id"]
-        for evidence in item["evidence"]:
-            if evidence["version_id"] != before_version:
-                continue
-            block_id = evidence["block_id"]
-            if block_id in matched:
-                previous, current = matched[block_id]["before"], matched[block_id]["after"]
-                if previous["text"] == current["text"]:
-                    located = rebase(evidence, current)
-                    if located is not None:
-                        result["rebased_evidence"].append({
-                            "item_id": item_id, "old_evidence": evidence, "new_evidence": located,
-                        })
-                        continue
-                    status = "ambiguous"
-                else:
-                    status = "changed"
-                candidates = [current]
-            elif block_id in ambiguous:
-                previous, candidates = ambiguous[block_id]
-                status = "ambiguous"
+    traces = {}
+    for block_id in dict.fromkeys(block_ids):
+        if block_id in matched:
+            previous, current = matched[block_id]["before"], matched[block_id]["after"]
+            status = "unchanged" if previous["text"] == current["text"] else "changed"
+            traces[block_id] = BlockTrace(previous, status, [current])
+        elif block_id in ambiguous:
+            previous, candidates = ambiguous[block_id]
+            traces[block_id] = BlockTrace(previous, "ambiguous", candidates)
+        else:
+            previous = removed[block_id]
+            candidates = _structural_candidates(previous, alignment["added"], anchors, ordinals)
+            if len(candidates) > 1:
+                traces[block_id] = BlockTrace(previous, "ambiguous", candidates, uncertain_replacement=True)
             else:
-                previous = removed[block_id]
-                candidates = _structural_candidates(previous, alignment["added"], anchors, ordinals)
-                status = "ambiguous" if len(candidates) > 1 else "changed" if candidates else "removed"
-
-            if status == "ambiguous" and block_id not in ambiguous:
-                warnings.append({
-                    "kind": "uncertain_evidence_alignment",
-                    "before_block_ids": [block_id],
-                    "after_block_ids": [block["id"] for block in candidates],
-                })
-            changes.append({
-                "old_evidence": evidence,
-                "before_block": previous,
-                "status": status,
-                "candidate_blocks": candidates,
-            })
-        if changes:
-            result["affected"].append({
-                "item_id": item_id, "claim_id": item["claim_id"], "item": item, "changes": changes,
-            })
-
-    return result
+                traces[block_id] = BlockTrace(previous, "changed" if candidates else "removed", candidates)
+    return traces, warnings
