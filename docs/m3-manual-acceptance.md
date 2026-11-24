@@ -2,7 +2,36 @@
 
 依据 [M3 规格 #28](https://github.com/Kstheme/open-super-agent-kb/issues/28)。用真实 Section 508 原件交付一份 M2 清单，再通过模拟修订验证 M3 如何复核和更新已交付的清单。业务验收和 M0 基线比较分别记结果。
 
-本方案可先准备样本。M3 的提交新版、查看复核、接受和拒绝等操作，等实现完成后用实际 CLI 执行。
+## 业务实测记录
+
+2026-11-24，以 Python 3.12 和两份 SHA-256 与 M1 清单一致的 Section 508 原件完成六项验收。各场景使用独立账本。需要语义判断的场景使用 `deepseek-flash`。
+
+| 用例 | 实际结果 |
+|---|---|
+| 规则真变 | 只有「数据表格」进入实质变化提案。新规则写明跨页条件，证据可回到新版的重复表头原文。 |
+| 只改措辞 | 「数据表格」进入复核并记录「无实质影响」，修改提案为零。 |
+| 插入无关段落 | Word 原件的 4 处证据均正确对应新版，受影响条目和修改提案均为零。 |
+| 删除依据 | 只有「数据表格」待人工核对，可查原声明和旧版第 9 表第 4 行。没有生成修改提案。 |
+| 接受提案 | 生成 v2，只有「数据表格」更新并引用新版证据。v1 四项及旧证据仍可查回。 |
+| 拒绝提案 | 当前版本为 v1，无新版本。拒绝决定和填写的理由均已落盘。 |
+
+本机验收报告保存于 `%TEMP%/openkb-m3-acceptance-20261124-170302-400`。复核报告与接受、拒绝记录可用于回查以上结果。
+
+## 基线实测记录
+
+使用 `deepseek-flash`、M0 原始 gold set 和相同模型配置各运行 1 次。两份报告的语料哈希均为 `f6293e10884feb7d66dd649bcece01c76f9c39be329010224874edd124efbaae`，价格表版本均为 `v1`。
+
+| 指标 | M3 账本复核 | `regenerate` |
+|---|---:|---:|
+| 宏平均召回率 | 100% | 100% |
+| 宏平均误报率 | 0% | 15.28% |
+| 总墙钟时间 | 36.10 秒 | 68.05 秒 |
+| 模型耗时 | 36.05 秒 | 68.01 秒 |
+| 输入 token | 5,060 | 7,022 |
+| 输出 token | 4,505 | 10,948 |
+| 估算费用 | 不可比 | 不可比 |
+
+本次达到 M3 质量门槛。配置中缺少该模型的单价，费用比较和基于费用的收缩判断无法完成。原始 `ledger.json`、`regenerate.json` 及 `compare.txt` 保存在同一报告目录。
 
 ## 准备测试资料
 
@@ -13,6 +42,20 @@
 3. 每个用例使用独立的测试账本。可重新执行 M2 准备步骤建立账本，接受和拒绝用例分别从同一基线开始。
 
 **基线应看到**　四项分别为适用范围、标题结构、数据表格和图片说明。「数据表格」的原依据是 **Data Tables** 中的 “Tables repeat their header row.”，在原件第 9 表第 4 行。
+
+用例 1–6 均可从 M2 验收的 PowerShell 会话继续，每个独立账本重新设置 `$db`、`$done` 和原 Word 版本 `$word`，并把 `$newFile` 设为当前用例的模拟修订副本路径。用已有的模型配置文件路径作为 `$config`。
+
+```powershell
+$artifact = $done.artifact.id
+$review = Invoke-M2Json @('review','run',$artifact,$word,$newFile,'--database',$db,'--config',$config)
+Invoke-M2Json @('review','show',$review.id,'--database',$db)
+```
+
+查询提案证据时，将 `$proof` 设为提案 `evidence` 中的一项。位置移动用例可从 `$review.rebased_evidence` 取对应项的 `new_evidence`。
+
+```powershell
+Invoke-M2Json @('ingest','evidence-show',$proof.id,'--database',$db)
+```
 
 ## 1. 规则真变时，只提出对应修改
 
@@ -52,6 +95,13 @@
 
 **怎么测**　在单独账本重做用例 1，接受「数据表格」提案。分别查看当前新版和原清单，查询两版的「数据表格」证据。
 
+```powershell
+$proposal = $review.proposals[0]
+Invoke-M2Json @('review','accept',$review.id,$proposal.id,'--database',$db)
+Invoke-M2Json @('review','artifact',$artifact,'--database',$db)
+Invoke-M2Json @('review','artifact',$artifact,'--version','1','--database',$db)
+```
+
 **通过条件**　当前清单生成新版本，仅「数据表格」更新为跨页条件并引用新版原文。其余三项内容和证据保持原样。旧版仍可查回四项，旧表格项仍指向原件。
 
 ## 6. 拒绝提案后，保留当前版本和理由
@@ -60,6 +110,13 @@
 
 **怎么测**　另用独立账本重做用例 1，拒绝提案并填写理由，例如「先按现行内部流程保留原检查项」。重新查询提案状态、当前清单和拒绝记录。
 
+```powershell
+$proposal = $review.proposals[0]
+Invoke-M2Json @('review','reject',$review.id,$proposal.id,'--reason','先按现行内部流程保留原检查项','--database',$db)
+Invoke-M2Json @('review','show',$review.id,'--database',$db)
+Invoke-M2Json @('review','artifact',$artifact,'--database',$db)
+```
+
 **通过条件**　拒绝决定和填写的理由均已落盘，当前清单版本和原证据保持原样，没有因拒绝生成新版本。
 
 ## 7. 用 M0 基线验证复核质量
@@ -67,6 +124,20 @@
 **测什么**　同样输入下，M3 是否覆盖至少同样多的实质变化，并把误报控制在基线以内。
 
 **怎么测**　用 `goldsets/m0-compliance.json`、同一模型配置和相同运行次数，分别通过评测入口运行 M3 与 `regenerate`。保存两份 JSON 报告，再用 M0 的 `openkb eval compare` 比较。核对语料哈希和模型配置匹配，按 M0 规则纳入失败和暂停案例。
+
+```powershell
+$gold = './goldsets/m0-compliance.json'
+$reports = Join-Path $env:TEMP ('openkb-m3-eval-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+$null = New-Item -ItemType Directory -Path $reports
+$ledgerReport = Join-Path $reports 'ledger.json'
+$baselineReport = Join-Path $reports 'regenerate.json'
+uv run openkb eval run --goldset $gold --system ledger --config $config --runs 1 --out $ledgerReport
+if ($LASTEXITCODE -ne 0) { throw 'M3 评测运行失败' }
+uv run openkb eval run --goldset $gold --system regenerate --config $config --runs 1 --out $baselineReport --reference-report $ledgerReport
+if ($LASTEXITCODE -ne 0) { throw '对手评测运行失败' }
+uv run openkb eval compare --report-a $ledgerReport --report-b $baselineReport
+if ($LASTEXITCODE -ne 0) { throw '两个报告无法比较' }
+```
 
 **通过条件**　M3 的宏平均召回率不低于 `regenerate`，宏平均误报率不高于 `regenerate`。记录总墙钟、模型耗时、token 和估算费用，缺少可比费用时填「不可比」。另外记录 M0 建议性收缩判断，留给人作产品取舍。 [M0 指标及比较口径](./specs/0001-m0-eval-harness.md#报告与判定)
 
