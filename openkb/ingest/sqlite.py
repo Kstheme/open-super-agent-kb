@@ -70,6 +70,22 @@ CREATE TABLE IF NOT EXISTS ledger_claim_evidence (
 """
 
 
+_DELIVERY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS deliver_tasks (
+    id TEXT PRIMARY KEY,
+    skeleton_json TEXT NOT NULL,
+    result_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS skeleton_proposals (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES deliver_tasks(id),
+    title TEXT NOT NULL,
+    state TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS skeleton_proposals_task ON skeleton_proposals(task_id);
+"""
+
+
 def _block(data: str) -> Block:
     fields = json.loads(data)
     fields["heading_path"] = tuple(fields["heading_path"])
@@ -86,7 +102,7 @@ class SqliteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(_SCHEMA + _CLAIM_SCHEMA)
+            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -249,3 +265,39 @@ class SqliteStore:
                 evidence = records.setdefault(row[:4], [])
                 evidence.append(Evidence(*row[4:]))
         return tuple(Claim(*fields, tuple(evidence)) for fields, evidence in records.items())
+
+    def save_delivery(self, task: dict) -> None:
+        payload = {key: value for key, value in task.items() if key not in {"skeleton", "skeleton_proposals"}}
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO deliver_tasks (id, skeleton_json, result_json) VALUES (?, ?, ?)",
+                (task["id"], json.dumps(task["skeleton"], ensure_ascii=False),
+                 json.dumps(payload, ensure_ascii=False)),
+            )
+
+    def delivery(self, task_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT skeleton_json, result_json FROM deliver_tasks WHERE id = ?", (task_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown delivery task: {task_id}")
+            proposals = conn.execute(
+                "SELECT id, task_id, title, state FROM skeleton_proposals WHERE task_id = ? ORDER BY rowid",
+                (task_id,),
+            )
+            return {
+                **json.loads(row[1]),
+                "skeleton": json.loads(row[0]),
+                "skeleton_proposals": [
+                    {"id": proposal_id, "task_id": task_id, "title": title, "state": state}
+                    for proposal_id, task_id, title, state in proposals
+                ],
+            }
+
+    def save_skeleton_proposal(self, proposal: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO skeleton_proposals (id, task_id, title, state) VALUES (?, ?, ?, ?)",
+                (proposal["id"], proposal["task_id"], proposal["title"], proposal["state"]),
+            )
