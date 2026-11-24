@@ -38,6 +38,25 @@ def _located(proof: Evidence, version: Version, block: dict) -> dict:
     }
 
 
+def _human_review(entry: dict, reason: str) -> dict:
+    lost_evidence = []
+    for change in entry["changes"]:
+        proof = change["old_evidence"]
+        if change["status"] == "ambiguous":
+            continue
+        if not any(proof["quote"] in block["text"] for block in change["candidate_blocks"]):
+            lost_evidence.append(proof)
+    return {
+        "item_id": entry["item_id"],
+        "claim_id": entry["claim_id"],
+        "judgment": "needs_human",
+        "reason": reason,
+        "original_statement": entry["item"]["check"],
+        "lost_evidence": lost_evidence,
+    }
+
+
+
 def _judge_affected(
     report: dict, source: Version, validator: EvidenceValidator, store: SqliteStore, config: Path | None,
 ) -> None:
@@ -52,9 +71,7 @@ def _judge_affected(
             jobs.append((entry, candidates))
         else:
             reason = "新版证据的块对齐存在歧义。" if ambiguous else "新版缺少可核对的替代依据。"
-            report["judgments"].append({
-                "item_id": entry["item_id"], "judgment": "needs_human", "reason": reason,
-            })
+            report["judgments"].append(_human_review(entry, reason))
     if not jobs:
         return
 
@@ -108,9 +125,13 @@ def _judge_affected(
                 "revised_method": judgment["revised_method"].strip(),
                 "evidence": [_located(proof, source, blocks[proof.block_id]) for proof in proofs],
             })
-        report["judgments"].append({
-            "item_id": item_id, "judgment": judgment["judgment"], "reason": judgment["reason"].strip(),
-        })
+        reason = judgment["reason"].strip()
+        if judgment["judgment"] == "needs_human":
+            report["judgments"].append(_human_review(entry, reason))
+        else:
+            report["judgments"].append({
+                "item_id": item_id, "judgment": judgment["judgment"], "reason": reason,
+            })
     report["usage"] = asdict(session.usage)
 
 
