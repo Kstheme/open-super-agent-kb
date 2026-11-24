@@ -7,7 +7,7 @@ from time import perf_counter
 
 from openkb.agent.model import ModelClient
 from openkb.agent.review import ReviewCandidate, eligible_candidates, judge_change, proposal_evidence
-from openkb.core.review import align_blocks, trace_review
+from openkb.core.review import align_blocks, trace_blocks
 
 from .contract import Block, Cost, EvidenceReference, Proposal, ReviewRequest, ReviewResult, Timing
 
@@ -79,37 +79,23 @@ def _compare_evidence(
                 result[ref] = _EvidenceReview(old_blocks[key].text, after=ref)
             continue
 
-        alignment = {
-            **align_blocks([_trace_block(block) for block in before.blocks],
-                           [_trace_block(block) for block in after.blocks]),
-            "before_version": before.version_id,
-            "after_version": after.version_id,
-            "warnings": {},
-        }
-        trace = trace_review(
-            [
-                {
-                    "slot_id": key, "claim_id": key,
-                    "evidence": [{"version_id": before.version_id, "block_id": key}],
-                }
-                for key in old_refs
-            ],
-            alignment,
-            lambda _, block: {"block_key": block["block_key"]},
+        alignment = align_blocks(
+            [_trace_block(block) for block in before.blocks],
+            [_trace_block(block) for block in after.blocks],
         )
-        for move in trace["rebased_evidence"]:
-            key = move["item_id"]
-            rebased = EvidenceReference(document_id, after.version_id, move["new_evidence"]["block_key"])
-            result[old_refs[key]] = _EvidenceReview(old_blocks[key].text, after=rebased)
-        for entry in trace["affected"]:
-            key = entry["item_id"]
-            change, = entry["changes"]
+        traces, _ = trace_blocks(alignment, old_refs)
+        for key, trace in traces.items():
+            old_ref = old_refs[key]
+            if trace.status == "unchanged":
+                rebased = EvidenceReference(document_id, after.version_id, trace.candidates[0]["block_key"])
+                result[old_ref] = _EvidenceReview(old_blocks[key].text, after=rebased)
+                continue
             candidates = tuple(
                 (EvidenceReference(document_id, after.version_id, block["block_key"]), block)
-                for block in change["candidate_blocks"]
+                for block in trace.candidates
             )
-            result[old_refs[key]] = _EvidenceReview(
-                old_blocks[key].text, candidates=candidates, ambiguous=change["status"] == "ambiguous",
+            result[old_ref] = _EvidenceReview(
+                old_blocks[key].text, candidates=candidates, ambiguous=trace.status == "ambiguous",
             )
     if result.keys() != references.keys():
         raise ValueError("Baseline evidence references an unknown source version")
