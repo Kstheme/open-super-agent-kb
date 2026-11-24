@@ -108,6 +108,23 @@ class PublicSampleGateTests(_IngestHarness):
                     old_position = old["locator"][label]
                     shift = (old_position >= 2) if document == "pdf" else 2 * (old_position >= 104)
                     self.assertEqual(new["locator"][label], old_position + shift)
+                if document == "pdf":
+                    expected = {f"255.{section}": page for section, page in
+                                enumerate((1, 3, 4, 6, 7, 7))}
+                    observed = {
+                        match["before"]["clause"]: (match["before"]["locator"]["page"],
+                                                     match["after"]["locator"]["page"])
+                        for match in report["matches"] if match["before"]["kind"] == "heading"
+                    }
+                    for clause, page in expected.items():
+                        self.assertEqual(observed[clause], (page, page + (page >= 2)))
+                else:
+                    observed = {
+                        match["before"]["locator"]["line_start"]: match["after"]["locator"]["line_start"]
+                        for match in report["matches"] if match["before"]["kind"] == "paragraph"
+                    }
+                    for old_line, new_line in ((33, 33), (106, 108), (108, 110), (111, 113), (172, 174)):
+                        self.assertEqual(observed[old_line], new_line)
                 print(f"M1 controlled {document}: {len(report['matches'])}/{len(before['blocks'])}", file=sys.stderr)
 
     def test_historical_pdf_reports_all_six_body_title_anchors(self):
