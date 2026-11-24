@@ -2,10 +2,11 @@ import hashlib
 import json
 import unicodedata
 from collections.abc import Callable
-from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
 from typing import Protocol
+
+from openkb.core.review import align_blocks
 
 from .model import Block, Evidence, LocatedEvidence, Version
 from .parsers import PARSERS
@@ -165,35 +166,10 @@ class Ledger:
         if before.normalization_version != after.normalization_version:
             raise ValueError("Cannot align different normalization versions")
 
-        old = defaultdict(list)
-        new = defaultdict(list)
-        for block in before.blocks:
-            old[block.block_key].append(block)
-        for block in after.blocks:
-            new[block.block_key].append(block)
-
-        matches, ambiguous, added, removed = [], [], [], []
-        for key in dict.fromkeys((*old, *new)):
-            previous, current = old.get(key, ()), new.get(key, ())
-            if not previous:
-                added.extend(current)
-            elif not current:
-                removed.extend(previous)
-            elif len(previous) == len(current) == 1:
-                matches.append({"before": asdict(previous[0]), "after": asdict(current[0])})
-            else:
-                ambiguous.append({
-                    "block_key": key,
-                    "before": [asdict(block) for block in previous],
-                    "after": [asdict(block) for block in current],
-                })
         return {
             "normalization_version": before.normalization_version,
             "before_version": before_id,
             "after_version": after_id,
-            "matches": matches,
-            "ambiguous": ambiguous,
-            "added": [asdict(block) for block in added],
-            "removed": [asdict(block) for block in removed],
+            **align_blocks([asdict(block) for block in before.blocks], [asdict(block) for block in after.blocks]),
             "warnings": {"before": before.warnings, "after": after.warnings},
         }

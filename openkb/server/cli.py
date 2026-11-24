@@ -7,13 +7,14 @@ from time import perf_counter
 
 from openkb.agent.model import EndpointError, ModelClient, load_model_config
 from openkb.eval.goldset import load_goldset
+from openkb.eval.ledger import LEDGER_NOTE, LedgerReviewSystem
 from openkb.eval.noop import NoopReviewSystem
 from openkb.eval.presentation import compare_reports, load_report, render_run_summary
 from openkb.eval.regenerate import REGENERATE_NOTE, RegenerateReviewSystem
 from openkb.eval.runner import run_goldset
 from openkb.eval.thresholds import load_thresholds
 
-from . import claims_cli, deliver_cli, ingest_cli
+from . import claims_cli, deliver_cli, ingest_cli, review_cli
 
 
 def _write_report(path: Path, content: str) -> None:
@@ -37,11 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     ingest = ingest_cli.configure(commands)
     claims = claims_cli.configure(commands)
     deliver = deliver_cli.configure(commands)
+    review = review_cli.configure(commands)
     evaluate = commands.add_parser("eval", help="Evaluate a review system")
     eval_commands = evaluate.add_subparsers(dest="eval_command", required=True)
     run = eval_commands.add_parser("run", help="Run a review system against a gold set")
     run.add_argument("--goldset", type=Path, required=True)
-    run.add_argument("--system", choices=("noop", "regenerate"), default="noop")
+    run.add_argument("--system", choices=("noop", "regenerate", "ledger"), default="noop")
     run.add_argument("--runs", type=int, default=1)
     run.add_argument("--out", type=Path, default=Path("report.json"))
     run.add_argument("--config", type=Path, help="Override ~/.openkb/config.toml")
@@ -59,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "deliver":
         return deliver_cli.run(args, deliver)
+    if args.command == "review":
+        return review_cli.run(args, review)
     if args.eval_command == "compare":
         try:
             print(compare_reports(load_report(args.report_a), load_report(args.report_b)))
@@ -84,16 +88,20 @@ def main(argv: list[str] | None = None) -> int:
 
     price_table_version = None
     notes = ()
-    if args.system == "regenerate":
+    if args.system in ("regenerate", "ledger"):
         try:
             config = load_model_config(args.config)
             client = ModelClient(config)
             client.preflight()
         except (EndpointError, ValueError) as error:
             run.error(str(error))
-        system = RegenerateReviewSystem(client)
         price_table_version = config.price_table_version
-        notes = (REGENERATE_NOTE,)
+        if args.system == "ledger":
+            system = LedgerReviewSystem(client)
+            notes = (LEDGER_NOTE,)
+        else:
+            system = RegenerateReviewSystem(client)
+            notes = (REGENERATE_NOTE,)
     else:
         system = NoopReviewSystem()
 

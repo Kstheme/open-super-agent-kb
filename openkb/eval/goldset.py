@@ -1,6 +1,6 @@
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -170,6 +170,19 @@ def _validate_annotations(
         raise ValueError(f"{location}: missing annotation for {', '.join(sorted(missing))}")
 
 
+def _baseline_ledger(annotations: list[dict[str, object]]) -> dict:
+    return {"items": {
+        annotation["item_id"]: {
+            "claim_ids": tuple(annotation["baseline_claim_ids"]),
+            "evidence": tuple(
+                {field: reference[field] for field in ("document_id", "version_id", "block_key")}
+                for reference in annotation["baseline_evidence"]
+            ),
+        }
+        for annotation in annotations
+    }}
+
+
 def load_goldset(path: Path) -> GoldSet:
     """Decode all cases before evaluating any system."""
     source = path.read_bytes()
@@ -204,5 +217,7 @@ def load_goldset(path: Path) -> GoldSet:
         annotations = case["annotations"]
         _validate_revision(request.corpus, case_id)
         _validate_annotations(case_id, request, annotations, require_provenance=format_version == 1)
+        if format_version == 1 and request.ledger is None:
+            request = replace(request, ledger=_baseline_ledger(annotations))
         cases.append(GoldCase(case_id, request, tuple(annotations)))
     return GoldSet(profile_version, hashlib.sha256(source).hexdigest(), tuple(cases))

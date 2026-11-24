@@ -7,7 +7,7 @@ from pathlib import Path
 
 from openkb.core.delivery import DeliveryConflict
 
-from .claims import Claim
+from .claims import Claim, compliance_claim
 from .ledger import StoreError
 from .model import Block, Evidence, Locator, TableCell, Version
 from .batch import BatchFile
@@ -98,6 +98,32 @@ CREATE INDEX IF NOT EXISTS open_delivery_conflicts_version
 """
 
 
+_REVIEW_SCHEMA = """
+CREATE TABLE IF NOT EXISTS review_tasks (
+    id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL REFERENCES deliver_tasks(id),
+    before_version TEXT NOT NULL REFERENCES source_versions(id),
+    after_version TEXT NOT NULL REFERENCES source_versions(id),
+    result_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifact_revisions (
+    artifact_id TEXT NOT NULL REFERENCES deliver_tasks(id),
+    version INTEGER NOT NULL CHECK (version >= 2),
+    snapshot_json TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, version)
+);
+CREATE TABLE IF NOT EXISTS edit_marks (
+    review_id TEXT NOT NULL REFERENCES review_tasks(id),
+    proposal_id TEXT NOT NULL,
+    claim_id TEXT NOT NULL REFERENCES ledger_claims(id),
+    reason TEXT NOT NULL,
+    actor TEXT NOT NULL DEFAULT 'user',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (review_id, proposal_id)
+);
+"""
+
+
 def _block(data: str) -> Block:
     fields = json.loads(data)
     fields["heading_path"] = tuple(fields["heading_path"])
@@ -123,7 +149,7 @@ class SqliteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA)
+            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA + _REVIEW_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -191,11 +217,15 @@ class SqliteStore:
 
     def evidence(self, evidence_id: str) -> Evidence:
         with closing(self._connect()) as conn:
-            fields = conn.execute(
-                """SELECT id, version_id, block_id, quote, quote_start, quote_end, quote_hash
-                   FROM source_evidence WHERE id = ?""",
-                (evidence_id,),
-            ).fetchone()
+            return self._evidence(conn, evidence_id)
+
+    @staticmethod
+    def _evidence(conn: sqlite3.Connection, evidence_id: str) -> Evidence:
+        fields = conn.execute(
+            """SELECT id, version_id, block_id, quote, quote_start, quote_end, quote_hash
+               FROM source_evidence WHERE id = ?""",
+            (evidence_id,),
+        ).fetchone()
         if fields is None:
             raise KeyError(f"Unknown evidence: {evidence_id}")
         return Evidence(*fields)
@@ -253,20 +283,24 @@ class SqliteStore:
     def save_claims(self, claims: tuple[Claim, ...]) -> None:
         with closing(self._connect()) as conn, conn:
             for claim in claims:
-                if not claim.evidence or any(item.version_id != claim.version_id for item in claim.evidence):
-                    raise ValueError("Claim evidence must bind to its source version")
-                for evidence in claim.evidence:
-                    self._insert_evidence(conn, evidence)
-                conn.execute(
-                    """INSERT INTO ledger_claims (id, version_id, profile, text)
-                       VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
-                    (claim.id, claim.version_id, claim.profile, claim.text),
-                )
-                conn.executemany(
-                    """INSERT INTO ledger_claim_evidence (claim_id, evidence_id)
-                       VALUES (?, ?) ON CONFLICT(claim_id, evidence_id) DO NOTHING""",
-                    ((claim.id, item.id) for item in claim.evidence),
-                )
+                self._insert_claim(conn, claim)
+
+    @classmethod
+    def _insert_claim(cls, conn: sqlite3.Connection, claim: Claim) -> None:
+        if not claim.evidence or any(item.version_id != claim.version_id for item in claim.evidence):
+            raise ValueError("Claim evidence must bind to its source version")
+        for evidence in claim.evidence:
+            cls._insert_evidence(conn, evidence)
+        conn.execute(
+            """INSERT INTO ledger_claims (id, version_id, profile, text)
+               VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
+            (claim.id, claim.version_id, claim.profile, claim.text),
+        )
+        conn.executemany(
+            """INSERT INTO ledger_claim_evidence (claim_id, evidence_id)
+               VALUES (?, ?) ON CONFLICT(claim_id, evidence_id) DO NOTHING""",
+            ((claim.id, item.id) for item in claim.evidence),
+        )
 
     def claims(self, version_id: str) -> tuple[Claim, ...]:
         with closing(self._connect()) as conn:
@@ -365,3 +399,114 @@ class SqliteStore:
                 "INSERT INTO skeleton_proposals (id, task_id, title, state) VALUES (?, ?, ?, ?)",
                 (proposal["id"], proposal["task_id"], proposal["title"], proposal["state"]),
             )
+
+    def artifact(self, artifact_id: str, version: int | None = None) -> dict:
+        with closing(self._connect()) as conn:
+            return self._artifact(conn, artifact_id, version)
+
+    @staticmethod
+    def _artifact(conn: sqlite3.Connection, artifact_id: str, version: int | None = None) -> dict:
+        if version is None:
+            latest = conn.execute(
+                """SELECT snapshot_json FROM artifact_revisions
+                   WHERE artifact_id = ? ORDER BY version DESC LIMIT 1""",
+                (artifact_id,),
+            ).fetchone()
+            if latest:
+                return json.loads(latest[0])
+        elif version != 1:
+            revision = conn.execute(
+                "SELECT snapshot_json FROM artifact_revisions WHERE artifact_id = ? AND version = ?",
+                (artifact_id, version),
+            ).fetchone()
+            if revision is None:
+                raise KeyError(f"Unknown artifact version: {artifact_id} version {version}")
+            return json.loads(revision[0])
+        row = conn.execute("SELECT result_json FROM deliver_tasks WHERE id = ?", (artifact_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown delivery task: {artifact_id}")
+        snapshot = json.loads(row[0])["artifact"]
+        if snapshot is None:
+            raise ValueError(f"Delivery task has no completed artifact: {artifact_id}")
+        return {**snapshot, "version": 1}
+
+    def save_review(self, review: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO review_tasks (id, artifact_id, before_version, after_version, result_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (review["id"], review["artifact_id"], review["before_version"], review["after_version"],
+                 json.dumps(review, ensure_ascii=False)),
+            )
+
+    def review(self, review_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            return self._review(conn, review_id)
+
+    @staticmethod
+    def _review(conn: sqlite3.Connection, review_id: str) -> dict:
+        row = conn.execute("SELECT result_json FROM review_tasks WHERE id = ?", (review_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown review: {review_id}")
+        return json.loads(row[0])
+
+    def decide_review(self, review_id: str, proposal_id: str, *, accept: bool, reason: str | None = None) -> dict:
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            review = self._review(conn, review_id)
+            proposal = next((item for item in review["proposals"] if item["id"] == proposal_id), None)
+            if proposal is None:
+                raise KeyError(f"Unknown proposal: {proposal_id}")
+            status = "accepted" if accept else "rejected"
+            reason = (reason or "").strip() or None
+            if proposal["status"] != "pending":
+                decision = proposal["decision"]
+                if (decision["status"], decision["reason"]) == (status, reason):
+                    return decision
+                raise ValueError(f"Proposal already {proposal['status']}: {proposal_id}")
+
+            artifact_id = review["artifact_id"]
+            artifact = self._artifact(conn, artifact_id)
+            version = artifact["version"]
+            if accept:
+                version = self._accept_review_item(conn, review, artifact, proposal)
+            elif reason is not None:
+                conn.execute(
+                    """INSERT INTO edit_marks (review_id, proposal_id, claim_id, reason)
+                       VALUES (?, ?, ?, ?)""",
+                    (review_id, proposal_id, proposal["claim_id"], reason),
+                )
+            decision = {
+                "review_id": review_id, "proposal_id": proposal_id, "status": status,
+                "artifact_id": artifact_id, "artifact_version": version, "reason": reason,
+            }
+            proposal.update(status=status, decision=decision)
+            conn.execute(
+                "UPDATE review_tasks SET result_json = ? WHERE id = ?",
+                (json.dumps(review, ensure_ascii=False), review_id),
+            )
+            return decision
+
+    @classmethod
+    def _accept_review_item(cls, conn: sqlite3.Connection, review: dict, artifact: dict, proposal: dict) -> int:
+        slot_id = proposal["item_id"]
+        item = next((item for item in artifact["items"] if item["slot_id"] == slot_id), None)
+        if item is None or item != proposal["old_item"]:
+            raise ValueError(f"Stale proposal for {slot_id}: the current item has changed")
+        proofs = tuple(cls._evidence(conn, reference["id"]) for reference in proposal["evidence"])
+        claim = compliance_claim(review["after_version"], proposal["revised_text"], proofs)
+        cls._insert_claim(conn, claim)
+        revised = {
+            **item, "claim_id": claim.id, "check": claim.text,
+            "method": proposal["revised_method"], "evidence": proposal["evidence"],
+        }
+        version = artifact["version"] + 1
+        snapshot = {
+            **artifact, "version": version,
+            "items": [revised if existing["slot_id"] == slot_id else existing for existing in artifact["items"]],
+        }
+        conn.execute(
+            "INSERT INTO artifact_revisions (artifact_id, version, snapshot_json) VALUES (?, ?, ?)",
+            (artifact["id"], version, json.dumps(snapshot, ensure_ascii=False)),
+        )
+        return version
