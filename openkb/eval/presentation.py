@@ -17,6 +17,7 @@ _METRICS = (
     ("每条正确检出的估算金额", ("cost", "amount_per_correct_item")),
 )
 _TOKEN_METRICS = {("cost", "input_tokens"), ("cost", "output_tokens")}
+_COMPARISON_VERSIONS = ("harness_version", "goldset_hash", "profile_version", "model_id", "price_table_version")
 
 
 def _number(value: int | float | None, *, exact: bool, signed: bool = False) -> str:
@@ -50,13 +51,41 @@ def load_report(path: Path) -> dict:
     return report
 
 
+def _quality_comparable(ledger: dict, opponent: dict) -> bool:
+    runs = ledger.get("runs")
+    expected = opponent.get("runs")
+    return (
+        ledger.get("model_id") is not None
+        and all(ledger[field] == opponent[field] for field in _COMPARISON_VERSIONS)
+        and isinstance(runs, (list, tuple)) and bool(runs)
+        and isinstance(expected, (list, tuple)) and len(runs) == len(expected)
+    )
+
+
+def _quality_gate(ledger: dict, opponent: dict, comparable: bool) -> str:
+    if not comparable:
+        return "M3 质量门槛 · 不可比。报告版本、模型或运行次数须一致。"
+    a, b = ledger.get("aggregate"), opponent.get("aggregate")
+    recall, baseline_recall = _metric_value(a, ("recall",)), _metric_value(b, ("recall",))
+    false_alarms = _metric_value(a, ("false_positive_rate",))
+    baseline_false_alarms = _metric_value(b, ("false_positive_rate",))
+    if None in (recall, baseline_recall, false_alarms, baseline_false_alarms):
+        return "M3 质量门槛 · 不可比。缺少有效的召回率或误报率。"
+    decision = "通过" if recall >= baseline_recall and false_alarms <= baseline_false_alarms else "未通过"
+    return f"M3 质量门槛 · {decision}。召回率须不低于 regenerate，误报率须不高于 regenerate。"
+
+
 def compare_reports(report_a: dict, report_b: dict) -> str:
-    comparable = report_a["goldset_hash"] == report_b["goldset_hash"]
+    same_goldset = report_a["goldset_hash"] == report_b["goldset_hash"]
+    by_system = {report["system"]: report for report in (report_a, report_b)}
+    m3_comparison = by_system.keys() == {"ledger", "regenerate"}
+    comparable = (same_goldset if not m3_comparison
+                  else _quality_comparable(by_system["ledger"], by_system["regenerate"]))
     lines = [
         f"A = {report_a['system']} / {report_a['goldset_hash']}",
         f"B = {report_b['system']} / {report_b['goldset_hash']}",
     ]
-    if not comparable:
+    if not same_goldset:
         lines.append("警告 · gold set 哈希不同，两份报告不可比。")
 
     lines.append("指标 | A | B | 差值 (B - A)")
@@ -69,6 +98,11 @@ def compare_reports(report_a: dict, report_b: dict) -> str:
             f"{label} | {_number(a, exact=exact)} | {_number(b, exact=exact)}"
             f" | {_number(delta, exact=exact, signed=True)}"
         )
+    if m3_comparison:
+        lines.append(_quality_gate(by_system["ledger"], by_system["regenerate"], comparable))
+        if any(_metric_value(report.get("aggregate"), ("cost", "estimated_amount")) is None
+               for report in by_system.values()):
+            lines.append("费用比较 · 不可比。至少一份报告缺少估算费用。")
     return "\n".join(lines)
 
 
@@ -78,9 +112,8 @@ def _advice(report: RunReport, reference: dict | None) -> str:
     if report.system != "regenerate" or reference is None:
         return "用同一 gold set 的对照报告核对召回与成本后，由人决定取舍。"
 
-    version_fields = ("harness_version", "goldset_hash", "profile_version", "model_id", "price_table_version")
     if reference["system"] in ("noop", "regenerate") or any(
-        reference[field] != getattr(report, field) for field in version_fields
+        reference[field] != getattr(report, field) for field in _COMPARISON_VERSIONS
     ):
         return "对照系统或版本不匹配，结果不可比。"
 

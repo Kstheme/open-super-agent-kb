@@ -1,7 +1,30 @@
 """Find the evidence that requires review after a source revision."""
 
 from bisect import bisect_left
+from collections import defaultdict
 from collections.abc import Callable
+
+
+def align_blocks(before: list[dict], after: list[dict]) -> dict:
+    old = defaultdict(list)
+    new = defaultdict(list)
+    for block in before:
+        old[block["block_key"]].append(block)
+    for block in after:
+        new[block["block_key"]].append(block)
+
+    matches, ambiguous, added, removed = [], [], [], []
+    for key in dict.fromkeys((*old, *new)):
+        previous, current = old.get(key, ()), new.get(key, ())
+        if not previous:
+            added.extend(current)
+        elif not current:
+            removed.extend(previous)
+        elif len(previous) == len(current) == 1:
+            matches.append({"before": previous[0], "after": current[0]})
+        else:
+            ambiguous.append({"block_key": key, "before": previous, "after": current})
+    return {"matches": matches, "ambiguous": ambiguous, "added": added, "removed": removed}
 
 
 def _structural_candidates(block: dict, added: list[dict], anchors: list[dict], ordinals: list[int]) -> list[dict]:
