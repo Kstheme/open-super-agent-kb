@@ -5,6 +5,7 @@ from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 
+from .claims import Claim
 from .model import Block, Evidence, Locator, TableCell, Version
 from .batch import BatchFile
 
@@ -53,6 +54,22 @@ CREATE TABLE IF NOT EXISTS ingest_batch_files (
 """
 
 
+_CLAIM_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ledger_claims (
+    id TEXT PRIMARY KEY,
+    version_id TEXT NOT NULL REFERENCES source_versions(id),
+    profile TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ledger_claims_version ON ledger_claims(version_id);
+CREATE TABLE IF NOT EXISTS ledger_claim_evidence (
+    claim_id TEXT NOT NULL REFERENCES ledger_claims(id),
+    evidence_id TEXT NOT NULL REFERENCES source_evidence(id),
+    PRIMARY KEY (claim_id, evidence_id)
+);
+"""
+
+
 def _block(data: str) -> Block:
     fields = json.loads(data)
     fields["heading_path"] = tuple(fields["heading_path"])
@@ -69,7 +86,7 @@ class SqliteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(_SCHEMA)
+            conn.executescript(_SCHEMA + _CLAIM_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -140,6 +157,7 @@ class SqliteStore:
         if fields is None:
             raise KeyError(f"Unknown evidence: {evidence_id}")
         return Evidence(*fields)
+
     def start_batch(self, batch_id: str, paths: Sequence[Path]) -> None:
         with closing(self._connect()) as conn, conn:
             conn.executemany(
@@ -166,3 +184,40 @@ class SqliteStore:
                    WHERE batch_id = ? AND path = ? AND version_id IS NULL""",
                 (item.version_id, item.error, batch_id, str(item.path)),
             )
+
+    def save_claims(self, claims: tuple[Claim, ...]) -> None:
+        with closing(self._connect()) as conn, conn:
+            for claim in claims:
+                if not claim.evidence or any(item.version_id != claim.version_id for item in claim.evidence):
+                    raise ValueError("Claim evidence must bind to its source version")
+                for evidence in claim.evidence:
+                    self._insert_evidence(conn, evidence)
+                conn.execute(
+                    """INSERT INTO ledger_claims (id, version_id, profile, text)
+                       VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
+                    (claim.id, claim.version_id, claim.profile, claim.text),
+                )
+                conn.executemany(
+                    """INSERT INTO ledger_claim_evidence (claim_id, evidence_id)
+                       VALUES (?, ?) ON CONFLICT(claim_id, evidence_id) DO NOTHING""",
+                    ((claim.id, item.id) for item in claim.evidence),
+                )
+
+    def claims(self, version_id: str) -> tuple[Claim, ...]:
+        with closing(self._connect()) as conn:
+            if conn.execute("SELECT 1 FROM source_versions WHERE id = ?", (version_id,)).fetchone() is None:
+                raise KeyError(f"Unknown version: {version_id}")
+            rows = conn.execute(
+                """SELECT c.id, c.version_id, c.profile, c.text,
+                          e.id, e.version_id, e.block_id, e.quote, e.quote_start, e.quote_end, e.quote_hash
+                   FROM ledger_claims c
+                   JOIN ledger_claim_evidence ce ON ce.claim_id = c.id
+                   JOIN source_evidence e ON e.id = ce.evidence_id
+                   WHERE c.version_id = ? ORDER BY c.id, e.id""",
+                (version_id,),
+            )
+            records = {}
+            for row in rows:
+                evidence = records.setdefault(row[:4], [])
+                evidence.append(Evidence(*row[4:]))
+        return tuple(Claim(*fields, tuple(evidence)) for fields, evidence in records.items())
