@@ -188,9 +188,22 @@ class SqliteStore:
 
     def save_batch_version(self, batch_id: str, path: Path, version: Version, original: bytes) -> Version:
         with closing(self._connect()) as conn, conn:
-            inserted = self._insert_version(conn, version, original)
-            self._finish_file(conn, batch_id, BatchFile(path, version.id, None))
-        return version if inserted else self.version(version.id)
+            # Serialize competing submissions before checking the file's current state.
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT version_id FROM ingest_batch_files WHERE batch_id = ? AND path = ?",
+                (batch_id, str(path)),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"File is not in ingest batch {batch_id}: {path}")
+            completed_version = row[0]
+            if completed_version is None:
+                inserted = self._insert_version(conn, version, original)
+                self._finish_file(conn, batch_id, BatchFile(path, version.id, None))
+                if inserted:
+                    return version
+                completed_version = version.id
+        return self.version(completed_version)
 
     @staticmethod
     def _finish_file(conn: sqlite3.Connection, batch_id: str, item: BatchFile) -> None:

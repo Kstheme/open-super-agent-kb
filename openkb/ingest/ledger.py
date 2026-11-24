@@ -34,6 +34,52 @@ def _normalize(value: str) -> str:
     return " ".join(unicodedata.normalize("NFC", value).split())
 
 
+def _require_locatable_block(block: Block | None) -> Block:
+    if block is None:
+        raise ValueError("Block does not belong to the selected version")
+    if block.kind == "document" and not block.text:
+        raise ValueError("Evidence requires a locatable text block")
+    return block
+
+
+def _validate_quote(version_id: str, block: Block, quote: str, quote_start: int | None) -> Evidence:
+    if not quote or not quote.strip():
+        raise ValueError("Evidence quote must contain text")
+    if quote_start is not None and type(quote_start) is not int:
+        raise ValueError("Evidence quote offset must be an integer")
+    if quote_start is None:
+        quote_start = block.text.find(quote)
+        if quote_start >= 0 and block.text.find(quote, quote_start + 1) >= 0:
+            raise ValueError("Evidence quote is ambiguous; specify its start offset")
+    if quote_start < 0 or not block.text.startswith(quote, quote_start):
+        raise ValueError("Evidence quote does not match the selected block and offset")
+    quote_end = quote_start + len(quote)
+    if block.kind == "table_row":
+        cells = block.locator.table_cells
+        if cells and all(cell.text_start is not None and cell.text_end is not None for cell in cells):
+            if not any(cell.text_start <= quote_start <= quote_end <= cell.text_end for cell in cells):
+                raise ValueError("Evidence must point inside a single source table cell")
+        elif " | " in quote:
+            raise ValueError("Evidence must point inside a single source table cell")
+    quote_hash = _hash(quote.encode("utf-8"))
+    return Evidence(
+        _key(version_id, block.id, str(quote_start), str(quote_end), quote_hash),
+        version_id, block.id, quote, quote_start, quote_end, quote_hash,
+    )
+
+
+class EvidenceValidator:
+    """Validate multiple quotes against one immutable document version."""
+
+    def __init__(self, version: Version) -> None:
+        self._version_id = version.id
+        self._blocks = {block.id: block for block in version.blocks}
+
+    def validate(self, block_id: str, quote: str, *, quote_start: int | None = None) -> Evidence:
+        block = _require_locatable_block(self._blocks.get(block_id))
+        return _validate_quote(self._version_id, block, quote, quote_start)
+
+
 class Ledger:
     def __init__(self, store: Store) -> None:
         self.store = store
@@ -87,29 +133,7 @@ class Ledger:
     ) -> Evidence:
         version = self.version(version_id)
         block = self._evidence_block(version, block_id)
-        if not quote or not quote.strip():
-            raise ValueError("Evidence quote must contain text")
-        if quote_start is not None and type(quote_start) is not int:
-            raise ValueError("Evidence quote offset must be an integer")
-        if quote_start is None:
-            quote_start = block.text.find(quote)
-            if quote_start >= 0 and block.text.find(quote, quote_start + 1) >= 0:
-                raise ValueError("Evidence quote is ambiguous; specify its start offset")
-        if quote_start < 0 or not block.text.startswith(quote, quote_start):
-            raise ValueError("Evidence quote does not match the selected block and offset")
-        quote_end = quote_start + len(quote)
-        if block.kind == "table_row":
-            cells = block.locator.table_cells
-            if cells and all(cell.text_start is not None and cell.text_end is not None for cell in cells):
-                if not any(cell.text_start <= quote_start <= quote_end <= cell.text_end for cell in cells):
-                    raise ValueError("Evidence must point inside a single source table cell")
-            elif " | " in quote:
-                raise ValueError("Evidence must point inside a single source table cell")
-        quote_hash = _hash(quote.encode("utf-8"))
-        return Evidence(
-            _key(version_id, block_id, str(quote_start), str(quote_end), quote_hash),
-            version_id, block_id, quote, quote_start, quote_end, quote_hash,
-        )
+        return _validate_quote(version.id, block, quote, quote_start)
 
     def add_evidence(
         self, version_id: str, block_id: str, quote: str, *, quote_start: int | None = None,
@@ -128,12 +152,7 @@ class Ledger:
 
     @staticmethod
     def _evidence_block(version: Version, block_id: str) -> Block:
-        for block in version.blocks:
-            if block.id == block_id:
-                if block.kind == "document" and not block.text:
-                    raise ValueError("Evidence requires a locatable text block")
-                return block
-        raise ValueError("Block does not belong to the selected version")
+        return _require_locatable_block(next((block for block in version.blocks if block.id == block_id), None))
 
     def align(self, before_id: str, after_id: str) -> dict:
         before, after = self.version(before_id), self.version(after_id)

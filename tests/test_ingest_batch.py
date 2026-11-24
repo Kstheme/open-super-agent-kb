@@ -76,6 +76,28 @@ class BatchCliTests(unittest.TestCase):
         self.assertEqual(resumed["completed"], 1)
         self.assertNotEqual(resumed["versions"][0]["version_id"], version_ids[0])
 
+    def test_stale_resume_does_not_write_an_untracked_version(self):
+        source = self.source / "policy.md"
+        source.write_text("Initial content", encoding="utf-8")
+        first_report = None
+
+        def complete_in_other_invocation(batch_id, index, total, path):
+            nonlocal first_report
+            with patch("openkb.server.batch_cli._progress"):
+                first_report, _ = self.call("resume", batch_id)
+            source.write_text("Replacement content", encoding="utf-8")
+
+        with patch("openkb.server.batch_cli._progress", complete_in_other_invocation):
+            stale_report, _ = self.call("batch", self.source)
+
+        self.assertEqual(stale_report, first_report)
+        first_id = first_report["versions"][0]["version_id"]
+        self.assertEqual(self.call("show", first_id)[0]["blocks"][0]["text"], "Initial content")
+        replacement = Ledger(SqliteStore(self.root / "separate.sqlite")).add(source)
+        with redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit):
+            main(["ingest", "show", replacement.id, "--database", str(self.root / "kb.sqlite")])
+        self.assertIn("Unknown version", error.getvalue())
+
     @unittest.skipUnless(os.environ.get("OPENKB_M1_BATCH"), "Set OPENKB_M1_BATCH to the verified 100 originals")
     def test_real_batch_resumes_from_interrupted_document_51(self):
         samples = Path(os.environ["OPENKB_M1_BATCH"])

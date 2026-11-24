@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from openkb.agent.model import ModelClient, ModelConfig
+from openkb.ingest.sqlite import SqliteStore
 from openkb.server.cli import main
 
 
@@ -70,6 +71,26 @@ class ClaimsCliTests(unittest.TestCase):
         self.assertEqual(located["quote"], quote)
         self.assertEqual(located["version_id"], self.version)
         self.assertEqual(located["locator"]["line_start"], 3)
+
+    def test_extraction_reads_the_selected_version_once_across_evidence_retries(self):
+        valid = self.claim("出差结束后十五天内提交报销")
+        valid["claims"][0]["evidence"].append(
+            {"block_id": self.block["id"], "quote": "员工应于"}
+        )
+        self.responses = [self.claim("虚构引文"), valid]
+        original = SqliteStore.version
+        reads = []
+
+        def version(store, version_id):
+            reads.append(version_id)
+            return original(store, version_id)
+
+        with patch.object(SqliteStore, "version", version):
+            result = self.command("claims", "extract", self.version)
+
+        self.assertEqual(result["state"], "done")
+        self.assertEqual(len(result["claims"][0]["evidence"]), 2)
+        self.assertEqual(reads, [self.version])
 
     def test_unverifiable_evidence_reports_reason_without_saving_claim(self):
         self.responses = [self.claim("虚构引文") for _ in range(3)]

@@ -57,7 +57,7 @@ uv run python -m unittest discover -s tests -p test_ingest_docx.py -v
 
 ## 批量建库与恢复
 
-批次创建时按路径排序并固定目录中支持的文件。CLI 把尝试进度写到标准错误流，把包含批次 ID、完成数、待处理数及失败原因的 JSON 写到标准输出。资料版本与该文件的完成记录在同一 SQLite 事务提交。批次通过 `--limit` 设置本次最多尝试的文件数。
+批次创建时按路径排序并固定目录中支持的文件。CLI 把尝试进度写到标准错误流，把包含批次 ID、完成数、待处理数及失败原因的 JSON 写到标准输出。资料版本与该文件的完成记录在同一 SQLite 事务提交。两个恢复操作同时处理同一文件时，先完成提交的版本保留在批次中，随后提交不会产生额外版本。批次通过 `--limit` 设置本次最多尝试的文件数。
 
 ```powershell
 uv run openkb ingest batch ./documents --database kb.sqlite --limit 50

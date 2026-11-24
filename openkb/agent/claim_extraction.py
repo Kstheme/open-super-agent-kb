@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from openkb.ingest.claims import Claim, ClaimStore, compliance_claim
-from openkb.ingest.ledger import Ledger
+from openkb.ingest.ledger import EvidenceValidator, Ledger
 
 from .model import ModelClient, Usage
 
@@ -58,12 +58,12 @@ class Extraction:
     error: str | None = None
 
 
-def _validate_claim(ledger: Ledger, version_id: str, candidate: dict) -> Claim:
+def _validate_claim(validator: EvidenceValidator, version_id: str, candidate: dict) -> Claim:
     text = candidate["text"].strip()
     if not text:
         raise ValueError("Claim text is empty")
     evidence = tuple(
-        ledger.validate_evidence(version_id, **reference)
+        validator.validate(**reference)
         for reference in candidate["evidence"]
     )
     return compliance_claim(version_id, text, evidence)
@@ -95,6 +95,7 @@ def extract_claims(
     )
     accepted: dict[str, Claim] = {}
     rejected: dict[str, RejectedClaim] = {}
+    validator = EvidenceValidator(source)
     feedback = ""
     state, reason = "done", None
     for _ in range(_EVIDENCE_ATTEMPTS):
@@ -106,7 +107,7 @@ def extract_claims(
         for candidate in generation.value["claims"]:
             text = candidate["text"].strip()
             try:
-                claim = _validate_claim(ledger, version_id, candidate)
+                claim = _validate_claim(validator, source.id, candidate)
             except (KeyError, ValueError) as error:
                 if text not in accepted:
                     rejected[text] = RejectedClaim(text, str(error))
