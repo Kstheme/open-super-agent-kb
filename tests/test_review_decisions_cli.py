@@ -5,6 +5,22 @@ from review_fixtures import ReviewCliCase, TABLE_RULE, write_word
 
 
 class ReviewDecisionCliTests(ReviewCliCase):
+    def headings_proposal(self, table_rule, before_version, name):
+        rule = "The document uses an approved custom Word heading style."
+        path = write_word(self.root / name, (table_rule,), heading_rule=rule)
+        block = self.new_word_block(path, rule)
+        with self.model_reply({
+            "judgment": "material", "reason": "The heading style requirement changed.",
+            "revised_text": rule, "revised_method": "Check the approved style in Word.",
+            "evidence": [{"block_id": block["id"], "quote": rule}],
+        }) as calls:
+            review = self.command("review", "run", self.artifact_id, before_version, path,
+                                  "--config", self.config)
+        self.assertEqual(calls.call_count, 2)
+        proposal, = review["proposals"]
+        self.assertEqual(proposal["item_id"], "headings")
+        return review, proposal
+
     def proposal(self, name="changed.docx", rule="Only tables that span pages repeat their header row."):
         path = write_word(self.root / name, (rule,))
         block = self.new_word_block(path, rule)
@@ -74,3 +90,28 @@ class ReviewDecisionCliTests(ReviewCliCase):
         self.assertEqual(self.command("review", "artifact", self.artifact_id), before)
         observed, = self.command("review", "show", stale_review["id"])["proposals"]
         self.assertEqual(observed["status"], "pending")
+
+    def test_follow_up_finds_older_evidence_on_the_same_document(self):
+        table_rule = "Only tables that span pages repeat their header row."
+        first, proposal = self.proposal(rule=table_rule)
+        self.command("review", "accept", first["id"], proposal["id"])
+        v2 = self.command("review", "artifact", self.artifact_id)
+
+        second, headings = self.headings_proposal(table_rule, first["after_version"], "third.docx")
+
+        self.assertEqual(second["artifact_version"], 2)
+        self.assertEqual([item["item_id"] for item in second["affected"]], ["headings"])
+        self.assertEqual(headings["old_item"]["evidence"][0]["version_id"], self.word_version["id"])
+        self.assertEqual(self.command("review", "artifact", self.artifact_id), v2)
+
+    def test_material_update_keeps_unchanged_support_for_same_item(self):
+        review, proposal = self.headings_proposal(TABLE_RULE, self.word_version["id"], "heading-change.docx")
+        self.command("review", "accept", review["id"], proposal["id"])
+        current = self.command("review", "artifact", self.artifact_id)
+        revised, = [item for item in current["items"] if item["slot_id"] == "headings"]
+        self.assertEqual(revised["evidence"], proposal["evidence"])
+        self.assertEqual({proof["quote"] for proof in revised["evidence"]}, {
+            "The document uses an approved custom Word heading style.",
+            'Headings in the "Navigation pane" match the document\'s visual outline.',
+        })
+        self.assertEqual({proof["version_id"] for proof in revised["evidence"]}, {review["after_version"]})

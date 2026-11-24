@@ -38,12 +38,13 @@ def write_docx(path, body):
     return path
 
 
-def write_word(path, table_quotes=(TABLE_RULE,), *, prefix=""):
+def write_word(path, table_quotes=(TABLE_RULE,), *, prefix="",
+               heading_rule="The document uses MS Word heading styles."):
     body = (
         prefix
         + section(
             "Headings",
-            "The document uses MS Word heading styles.",
+            heading_rule,
             'Headings in the "Navigation pane" match the document\'s visual outline.',
         )
         + section("Data Tables", *table_quotes)

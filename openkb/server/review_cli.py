@@ -1,7 +1,9 @@
 import argparse
 import json
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
+from time import monotonic
 from uuid import uuid4
 
 from openkb.agent.model import EndpointError, ModelClient, load_model_config
@@ -18,7 +20,7 @@ def configure(commands) -> argparse.ArgumentParser:
     subcommands = review.add_subparsers(dest="review_command", required=True)
     start = subcommands.add_parser("run", help="Import and review a new version of an evidenced source")
     start.add_argument("artifact", help="Delivered checklist ID")
-    start.add_argument("before_version", help="Previously evidenced source version ID")
+    start.add_argument("before_version", help="Previous version ID of a source used by the checklist")
     start.add_argument("new_file", type=Path, help="File containing the new source version")
     start.add_argument("--config", type=Path, help="Override ~/.openkb/config.toml")
     show = subcommands.add_parser("show", help="Read a persisted review")
@@ -65,9 +67,13 @@ def _human_review(entry: dict, reason: str) -> dict:
     }
 
 
+def _pause_review(report: dict, gaps: tuple[str, ...]) -> None:
+    report.update(state="paused", gaps=gaps, error="wall clock budget exhausted")
+
 
 def _judge_affected(
-    report: dict, source: Version, validator: EvidenceValidator, store: SqliteStore, config: Path | None,
+    report: dict, source: Version, validator: EvidenceValidator, store: SqliteStore,
+    config: Path | None, deadline: float,
 ) -> None:
     jobs = []
     for entry in report["affected"]:
@@ -88,15 +94,33 @@ def _judge_affected(
     try:
         client = ModelClient(load_model_config(config))
         report["model_id"] = client.config.model_id
-        client.preflight()
-    except (EndpointError, ValueError) as error:
+    except ValueError as error:
         report.update(state="failed", gaps=pending, error=str(error))
+        return
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        _pause_review(report, pending)
+        return
+    try:
+        client.preflight(timeout=min(5, remaining))
+    except EndpointError as error:
+        if monotonic() >= deadline:
+            _pause_review(report, pending)
+        else:
+            report.update(state="failed", gaps=pending, error=str(error))
+        return
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        _pause_review(report, pending)
         return
 
     session = client.session(
-        max_steps=MAX_STEPS, max_tokens=MAX_TOKENS, max_wall_seconds=MAX_WALL_SECONDS,
+        max_steps=MAX_STEPS, max_tokens=MAX_TOKENS, max_wall_seconds=remaining,
         checkpoint_dir=store.path.parent / "paused",
     )
+    retained = {}
+    for rebase in report["rebased_evidence"]:
+        retained.setdefault(rebase["item_id"], []).append(rebase["new_evidence"])
     for index, (entry, blocks) in enumerate(jobs):
         item = entry["item"]
         item_id = entry["item_id"]
@@ -116,6 +140,9 @@ def _judge_affected(
             break
 
         judgment = generation.value
+        if monotonic() >= deadline:
+            _pause_review(report, pending[index:])
+            break
         if judgment["judgment"] == "material":
             try:
                 proofs = tuple(validator.validate(**citation) for citation in judgment["evidence"])
@@ -124,6 +151,14 @@ def _judge_affected(
                 break
             for proof in proofs:
                 store.save_evidence(proof)
+            if monotonic() >= deadline:
+                _pause_review(report, pending[index:])
+                break
+            evidence = {
+                proof.id: _located(proof, source, blocks[proof.block_id]) for proof in proofs
+            }
+            for proof in retained.get(item_id, ()):
+                evidence.setdefault(proof["id"], proof)
             report["proposals"].append({
                 "id": uuid4().hex,
                 "item_id": item_id,
@@ -132,7 +167,7 @@ def _judge_affected(
                 "old_item": item,
                 "revised_text": judgment["revised_text"].strip(),
                 "revised_method": judgment["revised_method"].strip(),
-                "evidence": [_located(proof, source, blocks[proof.block_id]) for proof in proofs],
+                "evidence": list(evidence.values()),
             })
         reason = judgment["reason"].strip()
         if judgment["judgment"] == "needs_human":
@@ -144,18 +179,42 @@ def _judge_affected(
     report["usage"] = asdict(session.usage)
 
 
-def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
-    artifact = store.artifact(args.artifact)
-    if not any(
-        evidence["version_id"] == args.before_version
-        for item in artifact["items"] for evidence in item["evidence"]
-    ):
-        raise ValueError("The selected source version is not used by this artifact")
+def _trace_source(
+    items: list[dict], cited_versions: tuple[str, ...], after: str, ledger: Ledger,
+    rebase: Callable[[dict, dict], dict | None],
+) -> dict:
+    affected = {}
+    rebased = []
+    warnings = []
+    for cited_version in cited_versions:
+        trace = trace_review(items, ledger.align(cited_version, after), rebase)
+        rebased.extend(trace["rebased_evidence"])
+        warnings.extend(trace["alignment_warnings"])
+        for entry in trace["affected"]:
+            item_id = entry["item_id"]
+            if item_id in affected:
+                affected[item_id]["changes"].extend(entry["changes"])
+            else:
+                affected[item_id] = entry
+    return {
+        "affected": [affected[item["slot_id"]] for item in items if item["slot_id"] in affected],
+        "rebased_evidence": rebased,
+        "alignment_warnings": warnings,
+    }
 
+
+def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
+    deadline = monotonic() + MAX_WALL_SECONDS
+    artifact = store.artifact(args.artifact)
     ledger = Ledger(store)
     before = ledger.version(args.before_version)
+    cited_versions = tuple(dict.fromkeys(
+        evidence["version_id"] for item in artifact["items"] for evidence in item["evidence"]
+        if evidence["document_id"] == before.document_id
+    ))
+    if not cited_versions:
+        raise ValueError("The selected source document is not used by this artifact")
     after = ledger.add(args.new_file, before.document_id)
-    alignment = ledger.align(before.id, after.id)
     validator = EvidenceValidator(after)
 
     def rebase(old_evidence: dict, block: dict) -> dict | None:
@@ -174,8 +233,8 @@ def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
         "artifact_version": artifact["version"],
         "before_version": before.id,
         "after_version": after.id,
-        "normalization_version": alignment["normalization_version"],
-        **trace_review(artifact["items"], alignment, rebase),
+        "normalization_version": after.normalization_version,
+        **_trace_source(artifact["items"], cited_versions, after.id, ledger, rebase),
         "judgments": [],
         "proposals": [],
         "model_id": None,
@@ -183,7 +242,10 @@ def _run_review(args: argparse.Namespace, store: SqliteStore) -> dict:
         "gaps": [],
         "error": None,
     }
-    _judge_affected(report, after, validator, store, args.config)
+    if monotonic() >= deadline:
+        _pause_review(report, tuple(entry["item_id"] for entry in report["affected"]))
+    else:
+        _judge_affected(report, after, validator, store, args.config, deadline)
     store.save_review(report)
     return report
 
