@@ -1,3 +1,4 @@
+from html import unescape
 import json
 import re
 from unittest.mock import patch
@@ -80,9 +81,9 @@ class ReviewsWebTests(BrowserCase):
 
     def table_evidence(self, checklist):
         table = checklist.split('data-slot-id="data_tables"', 1)[1]
-        return re.search(r'href="(/evidence/[a-f0-9]+)"', table)[1]
+        return unescape(re.search(r'href="([^"]+evidence=[a-f0-9]+)#evidence"', table)[1])
 
-    def test_accepts_revision_and_retains_both_evidence_versions(self):
+    def test_accepts_revision_and_retains_both_evidence_versions_offline(self):
         listing = self.page(f"/reviews?artifact_id={self.artifact_id}")
         self.assertIn("资料版本", listing)
         self.assertIn(f'value="{self.original_version}"', listing)
@@ -108,17 +109,27 @@ class ReviewsWebTests(BrowserCase):
         new_items = re.findall(r'<li class="panel" data-slot-id="([^"]+)">(.*?)\s*</ul>\s*</li>', new, re.S)
         self.assertGreater(len(old_items), 1)
         self.assertEqual(
-            [item for item in old_items if item[0] != "data_tables"],
+            [(slot, body.replace("?version=1", "?version=2"))
+             for slot, body in old_items if slot != "data_tables"],
             [item for item in new_items if item[0] != "data_tables"],
         )
-        old_evidence = self.table_evidence(old)
-        new_evidence = self.table_evidence(new)
-        self.assertIn(TABLE_RULE, self.page(old_evidence))
-        self.assertIn(REVISED_RULE, self.page(new_evidence))
-        for link, source in ((old_evidence, self.word), (new_evidence, self.revised)):
-            with urlopen(self.address + link + "/original", timeout=5) as response:
-                self.assertIn(source.name, response.headers["Content-Disposition"])
-                self.assertEqual(response.read(), source.read_bytes())
+        offline = EndpointError("connection failed: fixture")
+        with patch.object(ModelClient, "_call", autospec=True, side_effect=offline) as calls:
+            self.assertIn("端点不可达", self.page("/status"))
+            self.assertEqual(calls.call_count, 1)
+            documents = self.page("/documents")
+            self.assertIn(self.word.name, documents)
+            self.assertIn(self.revised.name, documents)
+            self.assertIn("已接受", self.page(review_path))
+            for version, quote, source in ((1, TABLE_RULE, self.word), (2, REVISED_RULE, self.revised)):
+                checklist = self.page(f"{self.artifact_path}?version={version}")
+                panel = self.page(self.table_evidence(checklist)).split('id="evidence"', 1)[1]
+                self.assertIn(quote, panel)
+                download = re.search(r'href="(/evidence/[a-f0-9]+/original)"', panel)[1]
+                with urlopen(self.address + download, timeout=5) as response:
+                    self.assertIn(source.name, response.headers["Content-Disposition"])
+                    self.assertEqual(response.read(), source.read_bytes())
+        calls.assert_called_once()
 
     def test_rejection_persists_reason_without_a_new_version(self):
         with patch.object(ModelClient, "_call", autospec=True, side_effect=reply):

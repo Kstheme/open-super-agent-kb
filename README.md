@@ -63,7 +63,7 @@ Backup is a directory copy. Migration is a directory copy.
 
 ## Status
 
-The project is **pre-alpha** and preparing for M0. M0 uses synthetic policy documents to measure recall, false-positive rate, latency, and cost for a baseline that regenerates the artifact and runs a semantic diff. The sections above describe the product design. `pipx` installation and a local web demo are planned for M4. [System design](./docs/design.md) · [M0 evaluation spec](./docs/specs/0001-m0-eval-harness.md)
+The project is **pre-alpha**. The M4 local Web application can be installed from a built wheel with pipx. Use the [M4 acceptance guide](./docs/m4-manual-acceptance.md) to install it and try the separate Section 508 demo, from document import through checklist review and history. [System design](./docs/design.md) · [M0 evaluation spec](./docs/specs/0001-m0-eval-harness.md)
 
 ## Non-goals
 
