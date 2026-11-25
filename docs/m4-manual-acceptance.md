@@ -33,9 +33,12 @@ if ($LASTEXITCODE -ne 0) { throw '构建 wheel 失败' }
 
 **测什么**　用户能从源码目录外用安装包启动应用，检查本机数据和模型连接。
 
-在测试 PowerShell 将 `$bundle` 设为上一步生成或复制到的目录，`$py` 设为测试机 Python 3.12 可执行文件路径，`$config` 设为现有的模型 TOML 路径。继续执行：
+在测试 PowerShell 将 `$bundle` 设为上一步生成或复制到的目录，`$py` 设为测试机 Python 3.12 可执行文件路径，`$config` 设为现有的模型 TOML 路径。相对路径以当前目录为准，下面的命令会在切换目录前解析这些路径。
 
 ```powershell
+$bundle = (Resolve-Path -LiteralPath $bundle -ErrorAction Stop).ProviderPath
+$py = (Resolve-Path -LiteralPath $py -ErrorAction Stop).ProviderPath
+$config = (Resolve-Path -LiteralPath $config -ErrorAction Stop).ProviderPath
 $demo = Join-Path $bundle 'demo'
 $wheel = @(Get-ChildItem -LiteralPath (Join-Path $bundle 'wheel') -Filter '*.whl')
 if ($wheel.Count -ne 1) { throw '安装目录应含一个 wheel' }
