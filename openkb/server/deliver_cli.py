@@ -1,14 +1,15 @@
 import argparse
 from dataclasses import asdict
-from functools import partial
 import json
 from pathlib import Path
 from uuid import uuid4
 
-from openkb.core.delivery import DeliveryConflict, MAX_STEPS, execute_delivery
-from openkb.ingest.ledger import Ledger, StoreError
+from openkb.core.delivery import DeliveryConflict, MAX_STEPS
+from openkb.ingest.ledger import StoreError
 from openkb.ingest.sqlite import SqliteStore, open_delivery_store
-from openkb.profiles.word_accessibility import CHECKLIST_TITLE, SKELETON, find_coverage, supports_slot
+from openkb.profiles.word_accessibility import SKELETON, supports_slot
+
+from .delivery import start_delivery
 
 
 def configure(commands) -> argparse.ArgumentParser:
@@ -34,51 +35,6 @@ def configure(commands) -> argparse.ArgumentParser:
     return deliver
 
 
-def _run_delivery(args: argparse.Namespace, store: SqliteStore) -> dict:
-    message = args.message.strip()
-    if not message:
-        raise ValueError("A delivery request must contain a message")
-    source_ids = tuple(dict.fromkeys(args.source))
-    ledger = Ledger(store)
-    sources = tuple(ledger.version(version_id) for version_id in source_ids)
-    task_id = uuid4().hex
-
-    def task_snapshot(result: dict) -> dict:
-        artifact = None
-        if result["state"] == "done":
-            artifact = {
-                "id": task_id,
-                "kind": "checklist",
-                "title": CHECKLIST_TITLE,
-                "items": [
-                    {**coverage, "title": slot.title}
-                    for slot, coverage in zip(SKELETON, result["covered"], strict=True)
-                ],
-            }
-        return {
-            "id": task_id,
-            "kind": "deliver",
-            "message": message,
-            "sources": source_ids,
-            "skeleton": [asdict(slot) for slot in SKELETON],
-            "artifact": artifact,
-            "skeleton_proposals": [],
-            **result,
-        }
-
-    result = execute_delivery(
-        SKELETON,
-        partial(find_coverage, sources=sources, ledger=ledger, claims=store),
-        partial(store.open_delivery_conflicts, source_ids),
-        lambda completed: store.save_delivery(task_snapshot(completed)),
-        max_steps=args.max_steps,
-    )
-    data = task_snapshot(result)
-    if result["state"] == "paused":
-        store.save_delivery(data)
-    return data
-
-
 def _dispatch(args: argparse.Namespace, store: SqliteStore) -> dict:
     if args.deliver_command == "show":
         return store.delivery(args.task)
@@ -101,7 +57,7 @@ def _dispatch(args: argparse.Namespace, store: SqliteStore) -> dict:
         return asdict(conflict)
     if args.deliver_command == "resolve-conflict":
         return asdict(store.resolve_delivery_conflict(args.conflict))
-    return _run_delivery(args, store)
+    return start_delivery(store, args.message, args.source, max_steps=args.max_steps)
 
 
 def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<section aria-labelledby="workspace-title">
+  <h1 id="workspace-title">本地工作区</h1>
+  <div class="workspace-grid">
+    {% for path, label, description in [
+      ('/documents', '资料', '导入文件，查看资料及其版本。'),
+      ('/checklists', '清单', '生成自查清单，打开每一项的原文证据。'),
+      ('/reviews', '复核', '查看新版规则，确认差异与历史记录。')
+    ] %}
+    <article class="panel">
+      <h2>{{ label }}</h2>
+      <p>{{ description }}</p>
+      {% if (path, label) in navigation %}
+        <a class="button" href="{{ path }}">打开{{ label }}</a>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

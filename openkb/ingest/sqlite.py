@@ -9,7 +9,7 @@ from openkb.core.delivery import DeliveryConflict
 
 from .claims import Claim, compliance_claim
 from .ledger import StoreError
-from .model import Block, Evidence, Locator, TableCell, Version
+from .model import Block, DeliverySummary, Evidence, Locator, ReviewSummary, TableCell, Version, VersionSummary
 from .batch import BatchFile
 
 
@@ -136,6 +136,15 @@ def _block(data: str) -> Block:
     return Block(**fields)
 
 
+def check_database(path: Path) -> None:
+    """Read the existing ledger schema without creating or migrating a database."""
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            conn.execute("PRAGMA schema_version").fetchone()
+    except sqlite3.Error as error:
+        raise StoreError(str(error)) from error
+
+
 @contextmanager
 def open_delivery_store(path: Path) -> Iterator["SqliteStore"]:
     """Expose delivery storage failures through the ledger boundary."""
@@ -192,6 +201,16 @@ class SqliteStore:
                 "SELECT data FROM source_blocks WHERE version_id = ? ORDER BY ordinal", (version_id,),
             )
             return Version(*fields[:5], tuple(_block(row[0]) for row in blocks), tuple(json.loads(fields[5])))
+
+    def list_versions(self, *, document_id: str | None = None) -> tuple[VersionSummary, ...]:
+        query = "SELECT id, document_id, original_name, content_hash, warnings FROM source_versions"
+        parameters = ()
+        if document_id is not None:
+            query += " WHERE document_id = ?"
+            parameters = (document_id,)
+        with closing(self._connect()) as conn:
+            rows = conn.execute(query + " ORDER BY rowid DESC", parameters)
+            return tuple(VersionSummary(*row[:4], tuple(json.loads(row[4]))) for row in rows)
 
     def original(self, version_id: str) -> bytes:
         with closing(self._connect()) as conn:
@@ -373,6 +392,22 @@ class SqliteStore:
         )
         return tuple(DeliveryConflict(*row) for row in rows)
 
+    def list_deliveries(self) -> tuple[DeliverySummary, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT d.id, json_extract(d.result_json, '$.artifact.title'),
+                          json_extract(d.result_json, '$.state'),
+                          CASE WHEN json_extract(d.result_json, '$.state') = 'done'
+                               THEN COALESCE(revisions.latest, 1) END
+                   FROM deliver_tasks AS d
+                   LEFT JOIN (
+                       SELECT artifact_id, MAX(version) AS latest
+                       FROM artifact_revisions GROUP BY artifact_id
+                   ) AS revisions ON revisions.artifact_id = d.id
+                   ORDER BY d.rowid DESC"""
+            )
+            return tuple(DeliverySummary(*row) for row in rows)
+
     def delivery(self, task_id: str) -> dict:
         with closing(self._connect()) as conn:
             row = conn.execute(
@@ -399,6 +434,18 @@ class SqliteStore:
                 "INSERT INTO skeleton_proposals (id, task_id, title, state) VALUES (?, ?, ?, ?)",
                 (proposal["id"], proposal["task_id"], proposal["title"], proposal["state"]),
             )
+
+    def artifact_versions(self, artifact_id: str) -> tuple[int, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT version FROM artifact_revisions WHERE artifact_id = ?
+                   UNION ALL
+                   SELECT 1 FROM deliver_tasks
+                   WHERE id = ? AND json_extract(result_json, '$.state') = 'done'
+                   ORDER BY version DESC""",
+                (artifact_id, artifact_id),
+            )
+            return tuple(row[0] for row in rows)
 
     def artifact(self, artifact_id: str, version: int | None = None) -> dict:
         with closing(self._connect()) as conn:
@@ -438,6 +485,19 @@ class SqliteStore:
                 (review["id"], review["artifact_id"], review["before_version"], review["after_version"],
                  json.dumps(review, ensure_ascii=False)),
             )
+
+    def list_reviews(self) -> tuple[ReviewSummary, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT r.id, json_extract(d.result_json, '$.artifact.title'),
+                          json_extract(r.result_json, '$.artifact_version'), v.original_name,
+                          json_extract(r.result_json, '$.state')
+                   FROM review_tasks AS r
+                   JOIN deliver_tasks AS d ON d.id = r.artifact_id
+                   JOIN source_versions AS v ON v.id = r.after_version
+                   ORDER BY r.rowid DESC"""
+            )
+            return tuple(ReviewSummary(*row) for row in rows)
 
     def review(self, review_id: str) -> dict:
         with closing(self._connect()) as conn:

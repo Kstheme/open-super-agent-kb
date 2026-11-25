@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>清单</h1>
+<div class="checklist-layout">
+  <section class="panel" aria-labelledby="generate-title">
+    <h2 id="generate-title">生成清单</h2>
+    <p>{{ checklist_title }}</p>
+    {% if error %}
+    <p class="checklist-error" role="alert">{{ error }}</p>
+    {% endif %}
+    {% if versions %}
+    <form method="post" action="/checklists/generate">
+      <fieldset class="source-picker">
+        <legend>选择资料版本</legend>
+        {% for version in versions %}
+        <label class="source-option">
+          <input type="checkbox" name="source" value="{{ version.id }}">
+          <span>{{ version.original_name }}<br><code>{{ version.id[:12] }}</code></span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      <button type="submit">生成清单</button>
+    </form>
+    {% else %}
+    <p>请先在<a href="/documents">资料</a>中导入原件。</p>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="deliveries-title">
+    <h2 id="deliveries-title">已有清单与任务</h2>
+    {% if deliveries %}
+    <ul class="delivery-list">
+      {% for delivery in deliveries %}
+      <li>
+        {% if delivery.state == 'done' %}
+        <a href="/checklists/{{ delivery.id }}">{{ delivery.title }}</a>
+        <span class="revision-label">版本 {{ delivery.version }}</span>
+        {% elif delivery.state == 'paused' %}
+        <a href="/checklists/tasks/{{ delivery.id }}">交付已暂停</a>
+        {% endif %}
+        <code>{{ delivery.id[:12] }}</code>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>暂无清单。</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>连接状态</h1>
+<section class="panel" aria-labelledby="endpoint-status">
+  <h2 id="endpoint-status">{{ heading }}</h2>
+  <dl>
+    <dt>当前模型</dt>
+    <dd>{{ model or "未配置" }}</dd>
+    <dt>模型配置</dt>
+    <dd>{{ config.state }} · {{ config.detail }}</dd>
+    <dt>模型端点</dt>
+    <dd>{{ endpoint.state }} · {{ endpoint.detail }}</dd>
+  </dl>
+  <a class="button" href="/status">重新检查</a>
+</section>
+{% endblock %}

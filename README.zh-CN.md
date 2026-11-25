@@ -63,7 +63,7 @@ config.toml
 
 ## 状态
 
-项目处于 **pre-alpha**，目前在准备 M0 评测。M0 会用合成制度资料衡量「重新生成产物 + 语义 diff」的召回率、误报率、时延和成本，为后续复核机制建立基线。上文描述的是产品设计，`pipx` 安装与本地 Web 演示计划在 M4 交付。[系统设计](./docs/design.md) · [M0 评测规范](./docs/specs/0001-m0-eval-harness.md)
+项目处于 **pre-alpha**。M4 可使用 pipx 安装已构建的本地 Web 应用。按 [M4 业务级手动验收](./docs/m4-manual-acceptance.md) 安装，并用独立的 Section 508 演示包验证从资料导入到清单复核和历史回查的流程。 [系统设计](./docs/design.md) · [M0 评测规范](./docs/specs/0001-m0-eval-harness.md)
 
 ## 不做什么
 

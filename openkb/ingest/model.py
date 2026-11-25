@@ -61,6 +61,15 @@ class Version:
 
 
 @dataclass(frozen=True)
+class VersionSummary:
+    id: str
+    document_id: str
+    original_name: str
+    content_hash: str
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Evidence:
     id: str
     version_id: str
@@ -77,3 +86,20 @@ class LocatedEvidence(Evidence):
     original_name: str
     content_hash: str
     locator: Locator
+
+
+@dataclass(frozen=True)
+class DeliverySummary:
+    id: str
+    title: str | None
+    state: str
+    version: int | None
+
+
+@dataclass(frozen=True)
+class ReviewSummary:
+    id: str
+    artifact_title: str
+    artifact_version: int
+    revised_name: str
+    state: str

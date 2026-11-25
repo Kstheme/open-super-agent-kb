@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if title %}{{ title }} · {% endif %}OpenKB</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳转到内容</a>
+  <header class="app-header">
+    <div class="wrap header-row">
+      <a class="brand" href="/" aria-label="OpenKB 工作区">
+        <span class="brand-mark" aria-hidden="true">O</span>
+        OpenKB
+      </a>
+      <nav class="primary-nav" aria-label="主导航">
+        {% for path, label in navigation %}
+          <a href="{{ path }}"{% if request.url.path == path or (path != '/' and request.url.path.startswith(path ~ '/')) %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+  </header>
+  <main id="main" class="wrap main-area" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
