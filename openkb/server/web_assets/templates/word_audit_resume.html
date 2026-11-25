@@ -2,6 +2,7 @@
   <h2 id="word-audit-next" tabindex="-1">下一步</h2>
   {% if resume_error %}<p role="alert">{{ resume_error }}</p>{% endif %}
   {% set conflicts = audit.evidence_conflicts | default([]) | map(attribute="slot_id") | list %}
+  {% if audit.gaps %}
   <ul>
     {% for gap in audit.gaps %}
     {% if gap.id in conflicts %}
@@ -13,11 +14,21 @@
     {% endif %}
     {% endfor %}
   </ul>
+  {% endif %}
   {% if audit.state == "waiting" and conflicts | length < audit.gaps | length %}
   <p>可先<a href="/documents">导入所缺的规则资料</a>，返回此委托后继续。</p>
   {% endif %}
   <form action="/word-audits/{{ audit.id }}/resume" method="post" class="review-form">
     <input type="hidden" name="answer_snapshot" value="{{ answer_snapshot }}">
+    {% if audit.needs_page_span %}
+    <label for="word-audit-page-span">补充表格是否跨页</label>
+    <select id="word-audit-page-span" name="page_span">
+      <option value="">暂不确定</option>
+      {% for value, label in page_spans.items() %}
+      <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
     {% if resume_sources %}
     <details>
       <summary>指定后续查证所用的资料版本（可选）</summary>

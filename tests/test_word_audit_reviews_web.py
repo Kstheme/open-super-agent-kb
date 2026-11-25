@@ -268,3 +268,25 @@ class WordAuditReviewWebTests(BrowserCase):
         new = fourth - third
         self.assertEqual(len(new), 1)
         self.assertIn(decisions[0], self.page(new.pop()))
+
+
+    def test_positive_paraphrase_retains_verbatim_evidence_and_unsupported_rule_stays_unresolved(self):
+        version, _ = self.recorded_decisions()
+        paraphrase = "All data tables must have a repeating header row."
+        self.import_revision(version, write_word(self.root / "paraphrase.docx", (paraphrase,)))
+        inbox = "/word-audit-reviews"
+        reviews = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(inbox)))
+        self.assertEqual(len(reviews), 2)
+        for review in reviews:
+            html = self.page(review)
+            self.assertIn("原决定继续有效", html)
+            links = re.findall(r'href="(/evidence/[a-f0-9]+)"', html)
+            self.assertTrue(any(paraphrase in self.page(link) for link in links))
+        conditional = "All data tables must have a repeating header row unless the document is printed."
+        self.import_revision(version, write_word(self.root / "conditional.docx", (conditional,)))
+        newer = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(inbox))) - reviews
+        self.assertEqual(len(newer), 2)
+        for review in newer:
+            html = self.page(review)
+            self.assertIn("无法确认新版中对应的依据", html)
+            self.assertNotIn("新版缺少支撑原结论的依据", html)

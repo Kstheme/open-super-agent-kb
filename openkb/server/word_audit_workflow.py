@@ -45,7 +45,9 @@ def audit_workflow(
     ):
         finding = evidence_href + "#word-audit-" + slot
         next_item = finding if historical else evidence_href + "#word-audit-next"
-        if slot in covered:
+        if slot == "data_tables" and audit and audit.get("needs_page_span") and not historical:
+            node(key, label, "等待补充", next_item, "attention")
+        elif slot in covered:
             node(key, label, "已查证", finding, "done")
         elif slot in conflicts:
             node(key, label, "证据冲突", finding, "attention")
@@ -67,6 +69,8 @@ def audit_workflow(
 
     if decision:
         node("decision", "人工决定", "已记录", decision_target, "done")
+    elif audit and audit.get("needs_page_span"):
+        node("decision", "人工决定", "待审阅")
     elif covered:
         node("decision", "人工决定", "待确认", decision_target)
     else:

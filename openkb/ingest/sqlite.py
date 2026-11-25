@@ -451,6 +451,8 @@ class SqliteStore:
             audit = self._word_audit(conn, audit_id)
             if answer_snapshot is not None and answer_snapshot != self.word_audit_snapshot_id(audit):
                 raise ValueError("审阅建议已更新，请核对后再保存决定。")
+            if audit.get("needs_page_span"):
+                raise ValueError("请先补充表格是否跨页，再保存决定。")
             if not audit["covered"]:
                 raise ValueError("当前审阅暂无有依据的建议。")
             versions = {

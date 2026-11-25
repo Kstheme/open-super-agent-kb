@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlsplit
 
 from openkb.ingest.ledger import Ledger
 from openkb.ingest.sqlite import open_delivery_store
@@ -84,3 +85,34 @@ class WordAuditEvidenceWebTests(BrowserCase):
         self.assertIn("第 2 张正文表格：首行未设置重复表头。", answer)
         self.assertIn("待核对 · 表格是否跨页", answer)
         self.assertNotIn("delivery.docx", self.page("/documents"))
+
+
+    def test_narrower_rule_asks_only_for_unknown_page_span_and_resumes_same_audit(self):
+        scope = write_docx(self.root / "508-applicability-checklist.docx", paragraph("☐" + SCOPE_QUOTE))
+        restricted = write_word(self.root / "section508-word.docx", table_quotes=(RESTRICTED,))
+        self.import_version(scope)
+        self.import_version(restricted)
+        with self.post_form("/word-audits", {"goal": "核对这份 Word 是否需要重复表头"}) as response:
+            audit_path = urlsplit(response.url).path
+            waiting = response.read().decode("utf-8")
+        self.assertIn('data-audit-state="waiting"', waiting)
+        self.assertIn("补充表格是否跨页", waiting)
+        self.assertIn(RESTRICTED, waiting)
+        self.assertIn(SCOPE_QUOTE, waiting)
+        token = re.search(r'name="answer_snapshot" value="([^"]+)"', waiting)[1]
+        with self.post_form(audit_path + "/resume", {
+            "page_span": "multipage", "answer_snapshot": token,
+        }) as response:
+            self.assertEqual(urlsplit(response.url).path, audit_path)
+            resumed = response.read().decode("utf-8")
+        self.assertIn('data-audit-state="done"', resumed)
+        self.assertIn("用户提供 · 表格跨页", resumed)
+        self.assertIn("跨页表格适用", resumed)
+        self.assertIn(RESTRICTED, resumed)
+        self.assertNotIn('name="page_span"', resumed)
+
+        with self.post_form("/word-audits", {"goal": "已知表格跨页，且没有重复表头，请核对。"}) as response:
+            known = response.read().decode("utf-8")
+        self.assertIn('data-audit-state="done"', known)
+        self.assertIn("用户提供 · 表格跨页", known)
+        self.assertNotIn('name="page_span"', known)

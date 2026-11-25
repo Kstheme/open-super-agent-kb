@@ -1,7 +1,8 @@
 """The Section 508 template for a non-web Word self-check."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import re
 
 from openkb.core.delivery import Coverage, Slot
 from openkb.ingest.claims import ClaimStore, compliance_claim
@@ -18,6 +19,13 @@ SKELETON = (
 CHECKLIST_TITLE = "非网页 Word 文档无障碍自查清单"
 SCOPE_SOURCE = "508-applicability-checklist.docx"
 WORD_SOURCE = "section508-word.docx"
+MULTIPAGE_TABLE_CHECK = "只有跨页数据表格要求重复表头。"
+_REPEAT_HEADER_REQUIREMENT = re.compile(
+    r"(?:all (?:data )?tables|(?:data )?tables|each (?:data )?table|every (?:data )?table) "
+    r"(?:must|shall) (?:repeat (?:their|the|its) header rows?|"
+    r"(?:have|use) (?:a )?repeating header row)[.]?",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -167,6 +175,18 @@ def find_coverage(
     return None
 
 
+def _table_rule_paraphrases(version: Version, rule: Rule):
+    for block in version.blocks:
+        if block.kind != "table_row" or block.heading_path[-1:] != (rule.section,):
+            continue
+        for cell in block.locator.table_cells:
+            if cell.text_start is None or cell.text_end is None:
+                continue
+            quote = block.text[cell.text_start:cell.text_end]
+            if quote not in rule.quotes and _REPEAT_HEADER_REQUIREMENT.fullmatch(" ".join(quote.split())):
+                yield replace(rule, quotes=(quote,))
+
+
 def audit_coverages(
     slot: Slot,
     sources: tuple[Version, ...],
@@ -186,7 +206,7 @@ def audit_coverages(
                  rule.check, rule.method),
             Rule(rule.source, rule.section,
                  ("Only data tables that span multiple pages must repeat their header row.",),
-                 "只有跨页数据表格要求重复表头。",
+                 MULTIPAGE_TABLE_CHECK,
                  "单页数据表格不适用这条要求。未设置重复表头的跨页表格需要补设。"),
         )
 
@@ -194,7 +214,14 @@ def audit_coverages(
     for version in sources:
         if not version.original_name.casefold().endswith(".docx") or not eligible(version, slot.id):
             continue
-        for candidate in rules:
+        candidates = rules
+        if slot.id == "data_tables":
+            known_quotes = {quote for candidate in rules for quote in candidate.quotes}
+            candidates += tuple(
+                candidate for candidate in _table_rule_paraphrases(version, rule)
+                if candidate.quotes[0] not in known_quotes
+            )
+        for candidate in candidates:
             coverage = _coverage_for_rule(slot, version, candidate, ledger, claims)
             if coverage is not None:
                 found.append(coverage)

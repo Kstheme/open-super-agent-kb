@@ -12,7 +12,9 @@
   {% else %}
   <h2 id="word-audit-decision" tabindex="-1">记录人工决定</h2>
   {% if decision_error %}<p role="alert">{{ decision_error }}</p>{% endif %}
-  {% if audit.covered %}
+  {% if audit.needs_page_span %}
+  <p><a href="#word-audit-next">补充表格是否跨页</a>后可以保存决定。</p>
+  {% elif audit.covered %}
   <form action="/word-audits/{{ audit.id }}/decisions" method="post" class="review-form">
     <input type="hidden" name="answer_snapshot" value="{{ answer_snapshot }}">
     <label for="decision-choice">人工选择</label>

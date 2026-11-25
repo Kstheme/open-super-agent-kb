@@ -66,7 +66,11 @@ def _review_for_decision(
                 elif trace.status == "ambiguous":
                     basis = "unresolved"
                 elif not alternatives:
-                    basis = "missing"
+                    possible_rule = any(
+                        "header" in candidate["text"].casefold() or "表头" in candidate["text"]
+                        for candidate in trace.candidates
+                    )
+                    basis = "unresolved" if possible_rule else "missing"
                 else:
                     basis = "unchanged" if observed is None and check in checks else "material"
                 if observed is not None and observed["basis"] == basis:

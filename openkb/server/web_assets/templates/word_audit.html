@@ -35,11 +35,17 @@
     {% endfor %}
   </section>
   {% endif %}
+  {% if audit.page_span %}
+  <p>用户提供 · {{ page_spans[audit.page_span] }}。</p>
+  {% elif audit.deliverable %}
   <p>待核对 · 表格是否跨页需按交付件实际版式确认。</p>
+  {% endif %}
   {% if audit.state == "failed" %}
   <p role="status">查证工具失败 · 已完成的查证保留，检查本地资料后可重试。</p>
   {% elif audit.state == "paused" %}
   <p role="status">预算已用完 · 已完成的查证保留，可继续待查证项。</p>
+  {% elif audit.needs_page_span %}
+  <p role="status">表头规则已有原文依据。请补充表格是否跨页，以判断规则是否适用。</p>
   {% elif audit.gaps %}
   <p role="status">{{ "等待人工核对" if audit.evidence_conflicts | length == audit.gaps | length else "等待补充资料" }} · 已有原文支持的结论仍可查。</p>
   {% else %}
@@ -55,7 +61,13 @@
       {% if item.check == "有数据表格时，表头行应设置为重复。" %}
       <p>单页和跨页数据表格均适用。未设置重复表头的表格需要补设。</p>
       {% else %}
+      {% if audit.page_span == "multipage" %}
+      <p>跨页表格适用这条要求。未设置重复表头时需要补设。</p>
+      {% elif audit.page_span == "singlepage" %}
+      <p>单页表格无需按这条规则设置重复表头。</p>
+      {% else %}
       <p>{{ item.method }}</p>
+      {% endif %}
       {% endif %}
       {% endif %}
       {{ trace(item) }}
@@ -77,7 +89,7 @@
     {% endfor %}
   </ul>
 </section>
-{% if audit.gaps and not decision %}
+{% if (audit.gaps or audit.needs_page_span) and not decision %}
 {% include "word_audit_resume.html" %}
 {% endif %}
 {% include "word_audit_decision_panel.html" %}

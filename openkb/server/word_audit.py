@@ -2,13 +2,16 @@
 
 from collections.abc import Iterable
 from dataclasses import asdict
+import re
 from uuid import uuid4
 
 from openkb.core.delivery import CoverageUnavailable, MAX_STEPS, execute_delivery
 from openkb.ingest.ledger import Ledger
 from openkb.ingest.model import Version, VersionSummary
 from openkb.ingest.sqlite import SqliteStore
-from openkb.profiles.word_accessibility import SKELETON, audit_coverages, supports_audit_slot
+from openkb.profiles.word_accessibility import (
+    MULTIPAGE_TABLE_CHECK, SKELETON, audit_coverages, supports_audit_slot,
+)
 
 
 AUDIT_SKELETON = tuple(slot for slot in SKELETON if slot.id in {"scope", "data_tables"})
@@ -61,15 +64,47 @@ def audit_source_versions(
     return versions, roles, tuple(notes)
 
 
+PAGE_SPANS = {
+    "multipage": "表格跨页",
+    "singlepage": "表格均在单页内",
+    "mixed": "既有跨页表格，也有单页表格",
+}
+
+
+def _stated_page_span(goal: str) -> str:
+    single = spans = False
+    for clause in re.split(r"[，。；！？,.!?;]", goal):
+        if any(word in clause for word in ("是否", "会不会", "吗", "待核对")):
+            continue
+        single |= bool(re.search(
+            r"(?:[一两三123]张\s*单页(?:数据)?表|(?:表格|数据表|这张表)(?:(?:不|未|没有)跨页|(?:均|都)?在单页内))",
+            clause,
+        ))
+        spans |= bool(re.search(
+            r"(?:[一两三123]张\s*跨页(?:数据)?表|(?:表格|数据表|这张表)(?:均|都|已经|确实|已)?跨页)",
+            clause,
+        ))
+    if single and spans:
+        return "mixed"
+    return "multipage" if spans else "singlepage" if single else ""
+
+
 def run_word_audit(
     store: SqliteStore, goal: str, sources: Iterable[str], *, max_steps: int | None = None,
-    deliverable: dict | None = None, previous: dict | None = None,
+    deliverable: dict | None = None, previous: dict | None = None, page_span: str = "",
 ) -> dict:
     goal = (previous["goal"] if previous is not None else goal).strip()
     if not goal:
         raise ValueError("请输入审阅目标。")
 
+    if page_span and page_span not in PAGE_SPANS:
+        raise ValueError("请选择表格是否跨页。")
+    page_span = page_span or (previous.get("page_span", "") if previous else _stated_page_span(goal))
     if previous is not None and not previous["gaps"]:
+        if previous.get("needs_page_span") and page_span:
+            updated = {**previous, "state": "done", "needs_page_span": False, "page_span": page_span}
+            store.save_word_audit(updated, previous=previous)
+            return updated
         return previous
 
     versions, roles, notes = audit_source_versions(store, sources)
@@ -102,6 +137,11 @@ def run_word_audit(
         max_steps=MAX_STEPS if max_steps is None else max_steps, retry_uncovered=False,
     )
     covered.update((item["slot_id"], item) for item in result["covered"])
+    needs_page_span = (
+        any(item["check"] == MULTIPAGE_TABLE_CHECK for item in covered.values()) and not page_span
+    )
+    if needs_page_span and result["state"] == "done":
+        result["state"] = "waiting"
     prior_sources = previous["sources"] if previous else ()
     prior_notes = previous.get("source_notes", ()) if previous else ()
     audit = {
@@ -114,6 +154,8 @@ def run_word_audit(
         "evidence_conflicts": list(evidence_conflicts.values()),
         "source_notes": tuple(dict.fromkeys((*prior_notes, *notes))),
         "deliverable": previous.get("deliverable") if previous else deliverable,
+        "page_span": page_span,
+        "needs_page_span": needs_page_span,
     }
     store.save_word_audit(audit, previous=previous)
     return audit

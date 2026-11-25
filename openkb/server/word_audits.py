@@ -13,7 +13,7 @@ from openkb.ingest.sqlite import SqliteStore, open_delivery_store
 from .documents import save_upload
 from .evidence_view import evidence_position
 from .web import render
-from .word_audit import audit_sources, run_word_audit
+from .word_audit import PAGE_SPANS, audit_sources, run_word_audit
 from .word_audit_reviews import process_imports
 from .word_audit_workflow import audit_workflow
 
@@ -93,7 +93,7 @@ def word_audit(request: Request, audit_id: str):
 @router.post("/word-audits/{audit_id}/resume")
 def resume_word_audit(
     request: Request, audit_id: str, source: list[str] | None = Form(None),
-    answer_snapshot: str | None = Form(None),
+    answer_snapshot: str | None = Form(None), page_span: str = Form(""),
 ):
     try:
         with open_delivery_store(request.app.state.settings.database) as store:
@@ -104,7 +104,7 @@ def resume_word_audit(
                     resume_error="此委托已有新结果，请重新核对。",
                 )
             try:
-                run_word_audit(store, previous["goal"], source or (), previous=previous)
+                run_word_audit(store, previous["goal"], source or (), previous=previous, page_span=page_span)
             except (KeyError, ValueError):
                 return render_word_audit(
                     request, store.word_audit(audit_id), resume_sources=audit_sources(store),
@@ -138,7 +138,7 @@ def render_word_audit(
         slots={slot["id"]: slot["title"] for slot in audit["skeleton"]},
         decision=decision, decision_error=decision_error, resume_sources=resume_sources, resume_error=resume_error,
         workflow=workflow, status_code=400 if decision_error or resume_error else 200,
-        answer_snapshot=SqliteStore.word_audit_snapshot_id(audit),
+        answer_snapshot=SqliteStore.word_audit_snapshot_id(audit), page_spans=PAGE_SPANS,
     )
 
 
