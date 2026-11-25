@@ -2,7 +2,7 @@
 {% block content %}
 <section aria-labelledby="workspace-title">
   <h1 id="workspace-title">本地工作区</h1>
-  {% include "word_audit_workflow.html" %}
+  {% if workflow is defined %}{% include "word_audit_workflow.html" %}{% endif %}
   {% if word_reviews %}
   <section class="panel" aria-labelledby="word-audit-review-inbox">
     <h2 id="word-audit-review-inbox">决定复核</h2>
