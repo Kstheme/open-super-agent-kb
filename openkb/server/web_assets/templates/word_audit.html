@@ -20,7 +20,7 @@
 {% endmacro %}
 {% block content %}
 <h1>Word 交付审阅</h1>
-<section class="panel" aria-labelledby="word-audit-answer">
+<section class="panel" aria-labelledby="word-audit-answer" data-audit-state="{{ audit.state }}">
   <h2 id="word-audit-answer">审阅建议</h2>
   <p><strong>委托目标（用户提供）</strong> · {{ audit.goal }}</p>
   {% if audit.deliverable %}
@@ -35,8 +35,12 @@
   </section>
   {% endif %}
   <p>待核对 · 表格是否跨页需按交付件实际版式确认。</p>
-  {% if audit.gaps %}
-  <p role="status">部分要求仍待核对，现有建议只适用于有原文支持的条目。</p>
+  {% if audit.state == "failed" %}
+  <p role="status">查证工具失败 · 已完成的查证保留，检查本地资料后可重试。</p>
+  {% elif audit.state == "paused" %}
+  <p role="status">预算已用完 · 已完成的查证保留，可继续待查证项。</p>
+  {% elif audit.gaps %}
+  <p role="status">{{ "等待人工核对" if audit.evidence_conflicts | length == audit.gaps | length else "等待补充资料" }} · 已有原文支持的结论仍可查。</p>
   {% else %}
   <p role="status">已查证适用范围和表头要求。</p>
   {% endif %}
@@ -72,5 +76,8 @@
     {% endfor %}
   </ul>
 </section>
+{% if audit.gaps and not decision %}
+{% include "word_audit_resume.html" %}
+{% endif %}
 {% include "word_audit_decision_panel.html" %}
 {% endblock %}

@@ -13,6 +13,10 @@ MAX_TOKENS = 150_000
 MAX_WALL_SECONDS = 600
 
 
+class CoverageUnavailable(RuntimeError):
+    """The caller could not execute a coverage tool."""
+
+
 @dataclass(frozen=True)
 class Slot:
     id: str
@@ -44,7 +48,9 @@ def execute_delivery(
     save_completed: Callable[[dict], tuple[DeliveryConflict, ...]],
     *,
     max_steps: int = MAX_STEPS,
+    retry_uncovered: bool = True,
 ) -> dict:
+    """Check the skeleton within its budget, optionally waiting after one pass."""
     if not 0 <= max_steps <= MAX_STEPS:
         raise ValueError(f"Step budget must be between 0 and {MAX_STEPS}")
 
@@ -80,6 +86,8 @@ def execute_delivery(
         if monotonic() >= deadline:
             return snapshot("paused", "wall clock budget exhausted")
         if not pending:
+            if not retry_uncovered and len(covered) != len(skeleton):
+                return snapshot("waiting")
             result = snapshot("done")
             conflicts = save_completed(result)
             if not conflicts:
@@ -91,7 +99,10 @@ def execute_delivery(
             return snapshot("paused", "step budget exhausted")
         slot = pending.popleft()
         steps += 1
-        coverage = find_coverage(slot)
+        try:
+            coverage = find_coverage(slot)
+        except CoverageUnavailable:
+            return snapshot("failed", "coverage tool failed")
         if monotonic() >= deadline:
             return snapshot("paused", "wall clock budget exhausted")
 
@@ -101,7 +112,8 @@ def execute_delivery(
             return snapshot("paused", "wall clock budget exhausted")
 
         if coverage is None:
-            pending.append(slot)
+            if retry_uncovered:
+                pending.append(slot)
         else:
             if coverage.slot_id != slot.id:
                 raise ValueError("Coverage does not match the requested slot")

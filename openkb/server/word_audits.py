@@ -7,7 +7,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from openkb.ingest.docx import inspect_table_headers
-from openkb.ingest.model import Locator
+from openkb.ingest.model import Locator, VersionSummary
 from openkb.ingest.sqlite import SqliteStore, open_delivery_store
 
 from .documents import save_upload
@@ -67,14 +67,42 @@ def word_audit(request: Request, audit_id: str):
     try:
         with open_delivery_store(request.app.state.settings.database) as store:
             audit = store.word_audit(audit_id)
+            sources = audit_sources(store) if audit["gaps"] else ()
     except KeyError:
         raise HTTPException(404, "找不到此审阅。") from None
 
-    return render_word_audit(request, audit)
+    return render_word_audit(request, audit, resume_sources=sources)
+
+
+@router.post("/word-audits/{audit_id}/resume")
+def resume_word_audit(
+    request: Request, audit_id: str, source: list[str] | None = Form(None),
+    answer_snapshot: str | None = Form(None),
+):
+    try:
+        with open_delivery_store(request.app.state.settings.database) as store:
+            previous = store.word_audit(audit_id)
+            if answer_snapshot and answer_snapshot != store.word_audit_snapshot_id(previous):
+                return render_word_audit(
+                    request, previous, resume_sources=audit_sources(store),
+                    resume_error="此委托已有新结果，请重新核对。",
+                )
+            try:
+                run_word_audit(store, previous["goal"], source or (), previous=previous)
+            except (KeyError, ValueError):
+                return render_word_audit(
+                    request, store.word_audit(audit_id), resume_sources=audit_sources(store),
+                    resume_error="续审没有完成，请核对当前结果或所选资料后重试。",
+                )
+    except KeyError:
+        raise HTTPException(404, "找不到此审阅。") from None
+
+    return RedirectResponse(router.url_path_for("word_audit", audit_id=audit_id), status_code=303)
 
 
 def render_word_audit(
     request: Request, audit: dict, *, decision: dict | None = None, decision_error: str | None = None,
+    resume_sources: tuple[VersionSummary, ...] = (), resume_error: str | None = None,
 ) -> HTMLResponse:
     alternatives = [
         item for conflict in audit.get("evidence_conflicts", ()) for item in conflict["alternatives"]
@@ -87,7 +115,8 @@ def render_word_audit(
     return render(
         request, "word_audit.html", title="Word 交付审阅", audit=audit, positions=positions,
         slots={slot["id"]: slot["title"] for slot in audit["skeleton"]},
-        decision=decision, decision_error=decision_error, status_code=400 if decision_error else 200,
+        decision=decision, decision_error=decision_error, resume_sources=resume_sources, resume_error=resume_error,
+        status_code=400 if decision_error or resume_error else 200,
         answer_snapshot=SqliteStore.word_audit_snapshot_id(audit),
     )
 

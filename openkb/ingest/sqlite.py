@@ -401,8 +401,13 @@ class SqliteStore:
             )
         return ()
 
-    def save_word_audit(self, audit: dict) -> None:
+    def save_word_audit(self, audit: dict, *, previous: dict | None = None) -> None:
         with closing(self._connect()) as conn, conn:
+            if previous is not None:
+                conn.execute("BEGIN IMMEDIATE")
+                current = self._word_audit(conn, audit["id"])
+                if current != previous:
+                    raise ValueError("此委托已有新结果，请重新核对。")
             conn.execute(
                 """INSERT INTO word_audits (id, snapshot_json) VALUES (?, ?)
                    ON CONFLICT (id) DO UPDATE SET snapshot_json = excluded.snapshot_json""",

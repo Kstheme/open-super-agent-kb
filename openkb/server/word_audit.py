@@ -2,10 +2,9 @@
 
 from collections.abc import Iterable
 from dataclasses import asdict
-from functools import cache
 from uuid import uuid4
 
-from openkb.core.delivery import MAX_STEPS, execute_delivery
+from openkb.core.delivery import CoverageUnavailable, MAX_STEPS, execute_delivery
 from openkb.ingest.ledger import Ledger
 from openkb.ingest.model import Version, VersionSummary
 from openkb.ingest.sqlite import SqliteStore
@@ -63,24 +62,34 @@ def audit_source_versions(
 
 
 def run_word_audit(
-    store: SqliteStore, goal: str, sources: Iterable[str], *, max_steps: int = MAX_STEPS,
-    deliverable: dict | None = None,
+    store: SqliteStore, goal: str, sources: Iterable[str], *, max_steps: int | None = None,
+    deliverable: dict | None = None, previous: dict | None = None,
 ) -> dict:
-    goal = goal.strip()
+    goal = (previous["goal"] if previous is not None else goal).strip()
     if not goal:
         raise ValueError("请输入审阅目标。")
 
+    if previous is not None and not previous["gaps"]:
+        return previous
+
     versions, roles, notes = audit_source_versions(store, sources)
     ledger = Ledger(store)
-    task_id = uuid4().hex
-    evidence_conflicts = {}
+    covered = {item["slot_id"]: item for item in previous["covered"]} if previous else {}
+    pending = tuple(slot for slot in AUDIT_SKELETON if slot.id not in covered)
+    evidence_conflicts = {
+        conflict["slot_id"]: conflict
+        for conflict in (previous.get("evidence_conflicts", ()) if previous else ())
+    }
 
-    @cache
     def find(slot):
-        alternatives = audit_coverages(
-            slot, versions, ledger, store,
-            eligible=lambda version, slot_id: (version.document_id, slot_id) in roles,
-        )
+        try:
+            alternatives = audit_coverages(
+                slot, versions, ledger, store,
+                eligible=lambda version, slot_id: (version.document_id, slot_id) in roles,
+            )
+        except OSError as error:
+            raise CoverageUnavailable from error
+        evidence_conflicts.pop(slot.id, None)
         if len({item.check for item in alternatives}) > 1:
             evidence_conflicts[slot.id] = {
                 "slot_id": slot.id, "alternatives": [asdict(item) for item in alternatives],
@@ -89,17 +98,22 @@ def run_word_audit(
         return next(iter(alternatives), None)
 
     result = execute_delivery(
-        AUDIT_SKELETON, find, tuple, lambda _completed: (), max_steps=max_steps,
+        pending, find, tuple, lambda _completed: (),
+        max_steps=MAX_STEPS if max_steps is None else max_steps, retry_uncovered=False,
     )
+    covered.update((item["slot_id"], item) for item in result["covered"])
+    prior_sources = previous["sources"] if previous else ()
+    prior_notes = previous.get("source_notes", ()) if previous else ()
     audit = {
-        "id": task_id,
-        "goal": goal,
-        "sources": tuple(version.id for version in versions),
-        "skeleton": [asdict(slot) for slot in AUDIT_SKELETON],
-        "evidence_conflicts": list(evidence_conflicts.values()),
-        "source_notes": notes,
-        "deliverable": deliverable,
         **result,
+        "id": previous["id"] if previous else uuid4().hex,
+        "goal": goal,
+        "sources": tuple(dict.fromkeys((*prior_sources, *(version.id for version in versions)))),
+        "skeleton": [asdict(slot) for slot in AUDIT_SKELETON],
+        "covered": [covered[slot.id] for slot in AUDIT_SKELETON if slot.id in covered],
+        "evidence_conflicts": list(evidence_conflicts.values()),
+        "source_notes": tuple(dict.fromkeys((*prior_notes, *notes))),
+        "deliverable": previous.get("deliverable") if previous else deliverable,
     }
-    store.save_word_audit(audit)
+    store.save_word_audit(audit, previous=previous)
     return audit
