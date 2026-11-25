@@ -20,8 +20,9 @@
 {% endmacro %}
 {% block content %}
 <h1>Word 交付审阅</h1>
+{% include "word_audit_workflow.html" %}
 <section class="panel" aria-labelledby="word-audit-answer" data-audit-state="{{ audit.state }}">
-  <h2 id="word-audit-answer">审阅建议</h2>
+  <h2 id="word-audit-answer" tabindex="-1">审阅建议</h2>
   <p><strong>委托目标（用户提供）</strong> · {{ audit.goal }}</p>
   {% if audit.deliverable %}
   <section aria-label="待审 Word">
@@ -48,7 +49,7 @@
   <ul>
     {% for item in audit.covered %}
     <li data-slot-id="{{ item.slot_id }}">
-      <h3>{{ slots[item.slot_id] }}</h3>
+      <h3 id="word-audit-{{ item.slot_id }}" tabindex="-1">{{ slots[item.slot_id] }}</h3>
       <p>{{ item.check }}</p>
       {% if item.slot_id == "data_tables" %}
       {% if item.check == "有数据表格时，表头行应设置为重复。" %}
@@ -62,7 +63,7 @@
     {% endfor %}
     {% for conflict in audit.evidence_conflicts %}
     <li data-slot-id="{{ conflict.slot_id }}">
-      <h3>{{ slots[conflict.slot_id] }} · 证据冲突 · 待核对</h3>
+      <h3 id="word-audit-{{ conflict.slot_id }}" tabindex="-1">{{ slots[conflict.slot_id] }} · 证据冲突 · 待核对</h3>
       {% for item in conflict.alternatives %}
       <p>{{ item.check }}</p>
       {{ trace(item) }}
@@ -71,7 +72,7 @@
     {% endfor %}
     {% for gap in audit.gaps %}
     {% if gap.id not in audit.evidence_conflicts | default([]) | map(attribute="slot_id") | list %}
-    <li data-slot-id="{{ gap.id }}"><h3>{{ gap.title }} · 依据不足</h3></li>
+    <li data-slot-id="{{ gap.id }}"><h3 id="word-audit-{{ gap.id }}" tabindex="-1">{{ gap.title }} · 依据不足</h3></li>
     {% endif %}
     {% endfor %}
   </ul>
@@ -80,4 +81,5 @@
 {% include "word_audit_resume.html" %}
 {% endif %}
 {% include "word_audit_decision_panel.html" %}
+{% include "word_audit_workflow_actions.html" %}
 {% endblock %}

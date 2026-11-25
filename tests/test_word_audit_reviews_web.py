@@ -54,13 +54,15 @@ class WordAuditReviewWebTests(BrowserCase):
 
         workspace = self.page("/")
         self.assertIn("待人工确认", workspace)
-        reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', workspace)
+        reviews = tuple(dict.fromkeys(re.findall(r'href="(/word-audit-reviews/[^"]+)"', workspace)))
         self.assertEqual(len(set(reviews)), 2)
         for decision_path in decisions:
             self.assertTrue(any(f'href="{decision_path}"' in self.page(review) for review in reviews))
             self.assertIn("按原规则退回修改。", self.page(decision_path))
 
         review = self.page(reviews[0])
+        self.assertIn('<a href="#decision-impact-title" aria-current="step">', review)
+        self.assertRegex(review, r'href="/word-audit-decisions/[^"]+#word-audit-data_tables"')
         for text in (TABLE_RULE, NEW_RULE, "只有跨页", "受影响声明", "人工决定", "第 2 张表，第 1 行"):
             self.assertIn(text, review)
         evidence = re.findall(r'href="(/evidence/[a-f0-9]+)"', review)

@@ -1,5 +1,5 @@
 <section class="panel" aria-labelledby="word-audit-next">
-  <h2 id="word-audit-next">下一步</h2>
+  <h2 id="word-audit-next" tabindex="-1">下一步</h2>
   {% if resume_error %}<p role="alert">{{ resume_error }}</p>{% endif %}
   {% set conflicts = audit.evidence_conflicts | default([]) | map(attribute="slot_id") | list %}
   <ul>

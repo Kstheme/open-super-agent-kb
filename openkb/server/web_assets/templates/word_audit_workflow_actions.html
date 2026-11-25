@@ -1,0 +1,11 @@
+<details class="panel audit-workflow-actions">
+  <summary>Super Agent 行动</summary>
+  {% if workflow.steps is not none %}<p>最近一次查证执行了 {{ workflow.steps }} 步。</p>{% endif %}
+  <ul>
+    {% for step in workflow.nodes %}
+    {% if step.key in ["scope", "table", "answer", "review"] and step.target %}
+    <li><a href="{{ step.target }}">{{ step.label }}</a> · {{ step.status }}</li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+</details>

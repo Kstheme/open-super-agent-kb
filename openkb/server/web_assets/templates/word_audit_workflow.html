@@ -1,0 +1,20 @@
+<nav class="audit-workflow panel" aria-label="审阅流程">
+  <h2>审阅流程</h2>
+  <ol>
+    {% for step in workflow.nodes %}
+    <li class="workflow-step workflow-{{ step.key }} {{ step.tone }}" data-workflow-step="{{ step.key }}">
+      {% if step.target %}
+      <a href="{{ step.target }}"{% if step.key == workflow.current %} aria-current="step"{% endif %}>
+        <strong>{{ step.label }}</strong><span>{{ step.status }}</span>
+      </a>
+      {% else %}
+      <div><strong>{{ step.label }}</strong><span>{{ step.status }}</span></div>
+      {% endif %}
+    </li>
+    {% endfor %}
+    <li class="workflow-edge workflow-edge-split workflow-edge-branch" aria-hidden="true"></li>
+    <li class="workflow-edge workflow-edge-merge workflow-edge-branch" aria-hidden="true"></li>
+    <li class="workflow-edge workflow-edge-decision workflow-edge-arrow" aria-hidden="true"></li>
+    <li class="workflow-edge workflow-edge-review workflow-edge-arrow" aria-hidden="true"></li>
+  </ol>
+</nav>

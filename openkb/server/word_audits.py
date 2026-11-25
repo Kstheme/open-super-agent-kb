@@ -15,9 +15,17 @@ from .evidence_view import evidence_position
 from .web import render
 from .word_audit import audit_sources, run_word_audit
 from .word_audit_reviews import process_imports
+from .word_audit_workflow import audit_workflow
 
 
 router = APIRouter()
+
+
+def _workflow_links(store, audit: dict, decision: dict | None = None) -> tuple:
+    if decision is None:
+        decision = next(iter(store.word_audit_decisions(audit["id"])), None)
+    review = next(iter(store.word_audit_reviews(decision["id"])), None) if decision else None
+    return decision, review
 
 
 def workspace(request: Request, *, goal: str = "", error: str | None = None) -> HTMLResponse:
@@ -25,9 +33,17 @@ def workspace(request: Request, *, goal: str = "", error: str | None = None) -> 
         process_imports(store)
         versions = audit_sources(store)
         reviews = store.word_audit_reviews()
+        review = next((entry for entry in reviews if entry["state"] in {"pending", "failed"}), None)
+        if review:
+            decision = store.word_audit_decision(review["decision_id"])
+            audit = decision["audit"]
+        else:
+            audit = store.latest_word_audit()
+            decision, review = _workflow_links(store, audit) if audit else (None, None)
     return render(
         request, "workspace.html", title="工作区", versions=versions, goal=goal,
         word_reviews=reviews, error=error, status_code=400 if error else 200,
+        workflow=audit_workflow(request, audit, page="workspace", decision=decision, review=review),
     )
 
 
@@ -104,6 +120,11 @@ def render_word_audit(
     request: Request, audit: dict, *, decision: dict | None = None, decision_error: str | None = None,
     resume_sources: tuple[VersionSummary, ...] = (), resume_error: str | None = None,
 ) -> HTMLResponse:
+    with open_delivery_store(request.app.state.settings.database) as store:
+        latest_decision, review = _workflow_links(store, audit, decision)
+    workflow = audit_workflow(
+        request, audit, page="decision" if decision else "audit", decision=latest_decision, review=review,
+    )
     alternatives = [
         item for conflict in audit.get("evidence_conflicts", ()) for item in conflict["alternatives"]
     ]
@@ -116,7 +137,7 @@ def render_word_audit(
         request, "word_audit.html", title="Word 交付审阅", audit=audit, positions=positions,
         slots={slot["id"]: slot["title"] for slot in audit["skeleton"]},
         decision=decision, decision_error=decision_error, resume_sources=resume_sources, resume_error=resume_error,
-        status_code=400 if decision_error or resume_error else 200,
+        workflow=workflow, status_code=400 if decision_error or resume_error else 200,
         answer_snapshot=SqliteStore.word_audit_snapshot_id(audit),
     )
 

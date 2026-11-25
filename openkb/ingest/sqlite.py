@@ -414,6 +414,11 @@ class SqliteStore:
                 (audit["id"], json.dumps(audit, ensure_ascii=False)),
             )
 
+    def latest_word_audit(self) -> dict | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT snapshot_json FROM word_audits ORDER BY rowid DESC LIMIT 1").fetchone()
+        return json.loads(row[0]) if row is not None else None
+
     def word_audit(self, audit_id: str) -> dict:
         with closing(self._connect()) as conn:
             return self._word_audit(conn, audit_id)

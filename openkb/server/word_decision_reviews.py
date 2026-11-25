@@ -9,6 +9,7 @@ from openkb.ingest.sqlite import open_delivery_store
 from .evidence_view import evidence_position
 from .web import render
 from .word_audit_reviews import REVIEW_STATE_LABELS, process_imports, retry_failed_review
+from .word_audit_workflow import audit_workflow
 
 
 router = APIRouter()
@@ -36,6 +37,7 @@ def _review_page(request: Request, review_id: str, *, error: str | None = None) 
     return render(
         request, "word_decision_review.html", title="人工决定复核", review=review,
         decision=decision, version=version, positions=positions, error=error, labels=REVIEW_STATE_LABELS,
+        workflow=audit_workflow(request, decision["audit"], page="review", decision=decision, review=review),
         status_code=409 if error else 200,
     )
 

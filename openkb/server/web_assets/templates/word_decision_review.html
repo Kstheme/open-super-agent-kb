@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>人工决定复核</h1>
+{% include "word_audit_workflow.html" %}
 <section class="panel" aria-labelledby="decision-review-title">
   <h2 id="decision-review-title">{{ labels[review.state] }}</h2>
   <p><strong>新版资料</strong> · {{ version.original_name }} · <code>{{ version.id }}</code></p>
@@ -18,7 +19,7 @@
   {% endif %}
 </section>
 <section class="panel" aria-labelledby="decision-impact-title">
-  <h2 id="decision-impact-title">从变更原文查看影响</h2>
+  <h2 id="decision-impact-title" tabindex="-1">从变更原文查看影响</h2>
   {% for item in review["items"] %}
   <article class="panel" data-claim-id="{{ item.claim_id }}">
     <h3>受影响声明 · {{ item.old_check }}</h3>
@@ -83,5 +84,6 @@
   </form>
   {% endif %}
 </section>
+{% include "word_audit_workflow_actions.html" %}
 <a href="/">返回工作区</a>
 {% endblock %}
