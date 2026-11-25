@@ -73,19 +73,22 @@ PAGE_SPANS = {
 
 def _stated_page_span(goal: str) -> str:
     single = spans = False
-    for clause in re.split(r"[，。；！？,.!?;]", goal):
+    for clause in re.split(r"[，。；！,.!;]", goal):
+        clause = clause.strip()
         if any(word in clause for word in (
-            "如果", "假设", "若", "是否", "会不会", "可能", "不确定", "没核实", "未核实", "待核对", "吗",
+            "如果", "假设", "若", "是否", "会不会", "可能", "不确定", "待核对", "吗", "？", "?",
         )):
             continue
-        single |= bool(re.search(
-            r"(?:[一两三123]张\s*单页(?:数据)?表|(?:表格|数据表|这张表)(?:(?:不|未|没有)跨页|(?:均|都)?在单页内))",
-            clause,
-        ))
-        spans |= bool(re.search(
-            r"(?:[一两三123]张\s*跨页(?:数据)?表|(?:表格|数据表|这张表)(?:均|都|已经|确实|已)?跨页)",
-            clause,
-        ))
+        subject = r"^(?:(?:已知|已确认|我已确认|我已经确认|经核实)\s*)?(?:表格|数据表|这张表)"
+        quantity = r"(?:^|有|含有|包含|和|及|、)\s*[一两三123]张\s*"
+        single |= bool(
+            re.match(subject + r"(?:(?:不|未|没有)跨页|(?:均|都)?在单页内)", clause)
+            or re.search(quantity + r"单页(?:数据)?表", clause)
+        )
+        spans |= bool(
+            re.match(subject + r"(?:均|都|已经|确实|已)?跨页", clause)
+            or re.search(quantity + r"跨页(?:数据)?表", clause)
+        )
     if single and spans:
         return "mixed"
     return "multipage" if spans else "singlepage" if single else ""

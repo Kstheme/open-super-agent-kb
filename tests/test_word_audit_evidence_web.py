@@ -121,6 +121,8 @@ class WordAuditEvidenceWebTests(BrowserCase):
             "如果表格跨页，需要怎么处理？",
             "不确定表格跨页，请检查。",
             "我还没核实表格跨页。",
+            "我没确认表格跨页，请检查。",
+            "表格跨页？",
         ):
             with self.subTest(goal=goal), self.post_form("/word-audits", {"goal": goal}) as response:
                 waiting = response.read().decode("utf-8")
