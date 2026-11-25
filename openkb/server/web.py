@@ -44,6 +44,9 @@ def render(request: Request, template: str, *, status_code: int = 200, **context
 
 
 def create_app(settings: AppSettings) -> FastAPI:
+    from . import documents
+    from .health import status
+
     app = FastAPI(title="OpenKB", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.mount("/static", StaticFiles(directory=_ASSETS / "static"), name="static")
@@ -67,7 +70,6 @@ def create_app(settings: AppSettings) -> FastAPI:
     def workspace(request: Request):
         return render(request, "workspace.html", title="工作区")
 
-    from .health import status
-
     app.add_api_route("/status", status, name="status", response_class=HTMLResponse)
+    app.include_router(documents.router)
     return app

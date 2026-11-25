@@ -9,7 +9,7 @@ from openkb.core.delivery import DeliveryConflict
 
 from .claims import Claim, compliance_claim
 from .ledger import StoreError
-from .model import Block, Evidence, Locator, TableCell, Version
+from .model import Block, Evidence, Locator, TableCell, Version, VersionSummary
 from .batch import BatchFile
 
 
@@ -201,6 +201,16 @@ class SqliteStore:
                 "SELECT data FROM source_blocks WHERE version_id = ? ORDER BY ordinal", (version_id,),
             )
             return Version(*fields[:5], tuple(_block(row[0]) for row in blocks), tuple(json.loads(fields[5])))
+
+    def list_versions(self, *, document_id: str | None = None) -> tuple[VersionSummary, ...]:
+        query = "SELECT id, document_id, original_name, content_hash, warnings FROM source_versions"
+        parameters = ()
+        if document_id is not None:
+            query += " WHERE document_id = ?"
+            parameters = (document_id,)
+        with closing(self._connect()) as conn:
+            rows = conn.execute(query + " ORDER BY rowid DESC", parameters)
+            return tuple(VersionSummary(*row[:4], tuple(json.loads(row[4]))) for row in rows)
 
     def original(self, version_id: str) -> bytes:
         with closing(self._connect()) as conn:

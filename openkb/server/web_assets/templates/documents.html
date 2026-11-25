@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>资料</h1>
+{% if error %}
+<div class="document-notice document-error" role="alert">
+  <strong>导入失败</strong>
+  <p>{{ error }}</p>
+</div>
+{% elif imported %}
+<div class="document-notice" role="status">
+  <strong>导入成功</strong>
+  <p>{{ imported.original_name }}</p>
+</div>
+{% endif %}
+<section class="panel document-upload" aria-labelledby="import-title">
+  <h2 id="import-title">导入资料</h2>
+  <form action="/documents/import" method="post" enctype="multipart/form-data">
+    <label for="source">本地文件</label>
+    <input id="source" name="source" type="file" accept=".md,.markdown,.pdf,.docx" aria-describedby="supported-formats" required>
+    <p id="supported-formats">支持 Markdown、PDF 和 DOCX。</p>
+    <button type="submit">导入资料</button>
+  </form>
+</section>
+<section class="document-library" aria-labelledby="versions-title">
+  <h2 id="versions-title">资料版本</h2>
+  {% if versions %}
+  <ul class="document-versions">
+    {% for version in versions %}
+    <li class="panel" data-document-id="{{ version.document_id }}" data-version-id="{{ version.id }}">
+      <div class="document-version-title">
+        <h3>{{ version.original_name }}</h3>
+        <span class="document-status">已入库</span>
+      </div>
+      <dl>
+        <dt>版本</dt>
+        <dd><code>{{ version.id }}</code></dd>
+        <dt>资料 ID</dt>
+        <dd><code>{{ version.document_id }}</code></dd>
+      </dl>
+      {% if version.warnings %}
+      <ul class="document-warnings">
+        {% for warning in version.warnings %}<li>{{ warning }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="panel">暂无资料。</p>
+  {% endif %}
+</section>
+{% endblock %}

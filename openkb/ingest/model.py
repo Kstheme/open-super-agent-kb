@@ -61,6 +61,15 @@ class Version:
 
 
 @dataclass(frozen=True)
+class VersionSummary:
+    id: str
+    document_id: str
+    original_name: str
+    content_hash: str
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Evidence:
     id: str
     version_id: str
