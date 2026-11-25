@@ -8,7 +8,7 @@ from review_fixtures import TABLE_RULE, ReviewCliCase, paragraph, write_word
 class ReviewCliTests(ReviewCliCase):
     def test_wall_deadline_includes_preparing_review(self):
         path = write_word(self.root / "expired.docx", ("Only long tables repeat their header row.",))
-        with patch("openkb.server.review_cli.monotonic", side_effect=[0, 601]), \
+        with patch("openkb.server.reviewing.monotonic", side_effect=[0, 601]), \
                 self.model_reply({}) as calls:
             review = self.run_review(path, "--config", self.config, expected_exit=1)
         calls.assert_not_called()
@@ -18,7 +18,7 @@ class ReviewCliTests(ReviewCliCase):
 
     def test_preflight_is_bounded_by_remaining_wall_deadline(self):
         path = write_word(self.root / "expired.docx", ("Only long tables repeat their header row.",))
-        with patch("openkb.server.review_cli.monotonic", side_effect=[0, 598, 599, 601]), \
+        with patch("openkb.server.reviewing.monotonic", side_effect=[0, 598, 599, 601]), \
                 self.model_reply({}) as calls:
             review = self.run_review(path, "--config", self.config, expected_exit=1)
         self.assertEqual(calls.call_count, 1)

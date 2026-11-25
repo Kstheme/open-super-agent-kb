@@ -5,6 +5,7 @@
   <h1>{{ artifact.title }}</h1>
   <span class="revision-label">版本 {{ artifact.version }}</span>
 </header>
+<p><a href="/reviews?artifact_id={{ artifact.id }}">复核资料新版</a></p>
 {% if history|length > 1 %}
 <nav class="checklist-history" aria-label="清单历史版本">
   {% for version in history %}

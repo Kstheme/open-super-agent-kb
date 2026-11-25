@@ -9,7 +9,7 @@ from openkb.core.delivery import DeliveryConflict
 
 from .claims import Claim, compliance_claim
 from .ledger import StoreError
-from .model import Block, DeliverySummary, Evidence, Locator, TableCell, Version, VersionSummary
+from .model import Block, DeliverySummary, Evidence, Locator, ReviewSummary, TableCell, Version, VersionSummary
 from .batch import BatchFile
 
 
@@ -485,6 +485,19 @@ class SqliteStore:
                 (review["id"], review["artifact_id"], review["before_version"], review["after_version"],
                  json.dumps(review, ensure_ascii=False)),
             )
+
+    def list_reviews(self) -> tuple[ReviewSummary, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT r.id, json_extract(d.result_json, '$.artifact.title'),
+                          json_extract(r.result_json, '$.artifact_version'), v.original_name,
+                          json_extract(r.result_json, '$.state')
+                   FROM review_tasks AS r
+                   JOIN deliver_tasks AS d ON d.id = r.artifact_id
+                   JOIN source_versions AS v ON v.id = r.after_version
+                   ORDER BY r.rowid DESC"""
+            )
+            return tuple(ReviewSummary(*row) for row in rows)
 
     def review(self, review_id: str) -> dict:
         with closing(self._connect()) as conn:

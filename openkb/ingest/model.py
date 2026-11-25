@@ -94,3 +94,12 @@ class DeliverySummary:
     title: str | None
     state: str
     version: int | None
+
+
+@dataclass(frozen=True)
+class ReviewSummary:
+    id: str
+    artifact_title: str
+    artifact_version: int
+    revised_name: str
+    state: str

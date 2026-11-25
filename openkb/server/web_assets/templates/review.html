@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/reviews?artifact_id={{ artifact.id }}">返回复核</a></p>
+<h1>{{ states[review.state] }}</h1>
+<p>{{ before.original_name }} → {{ after.original_name }}</p>
+<p><a href="/checklists/{{ artifact.id }}?version={{ artifact.version }}">查看复核前清单版本 {{ artifact.version }}</a></p>
+{% if error %}<p class="review-alert" role="alert">{{ error }}</p>{% endif %}
+{% if failure %}
+<p class="review-alert" role="alert">{{ failure }}{% if review.state == "failed" %}<a href="/status">查看连接状态</a>{% endif %}</p>
+{% endif %}
+{% if review.gaps %}
+<p>仍待核对的条目：{% for item in review.gaps %}{% if not loop.first %}、{% endif %}{{ item_names.get(item, item) }}{% endfor %}</p>
+{% endif %}
+{% if review.proposals %}
+<section aria-labelledby="proposal-heading">
+  <h2 id="proposal-heading">提案</h2>
+  {% for proposal in review.proposals %}
+  <article class="panel review-proposal" id="proposal-{{ proposal.id }}" data-item-id="{{ proposal.item_id }}" tabindex="-1">
+    <h3>{{ proposal.old_item.title }}</h3>
+    <div class="review-comparison">
+      <section class="review-rule">
+        <h4>旧规则</h4>
+        <p>{{ proposal.old_item.check }}</p>
+        <p>{{ proposal.old_item.method }}</p>
+        <ul class="evidence-links">
+          {% for proof in proposal.old_item.evidence %}
+          <li><a href="/evidence/{{ proof.id }}">旧版证据 · {{ proof.original_name }}</a></li>
+          {% endfor %}
+        </ul>
+      </section>
+      <section class="review-rule">
+        <h4>修改建议</h4>
+        <p>{{ proposal.revised_text }}</p>
+        <p>{{ proposal.revised_method }}</p>
+        <ul class="evidence-links">
+          {% for proof in proposal.evidence %}
+          <li><a href="/evidence/{{ proof.id }}">{% if proof.version_id == review.after_version %}新版证据{% else %}保留证据{% endif %} · {{ proof.original_name }}</a></li>
+          {% endfor %}
+        </ul>
+      </section>
+    </div>
+    {% if proposal.status == "pending" %}
+    <div class="review-actions">
+      <form method="post" action="/reviews/{{ review.id }}/proposals/{{ proposal.id }}/accept">
+        <button type="submit">接受提案</button>
+      </form>
+      <form class="review-form" method="post" action="/reviews/{{ review.id }}/proposals/{{ proposal.id }}/reject">
+        <label for="reason-{{ proposal.id }}">拒绝理由（可选）</label>
+        <textarea id="reason-{{ proposal.id }}" name="reason" rows="2"></textarea>
+        <button class="review-secondary" type="submit">拒绝提案</button>
+      </form>
+    </div>
+    {% else %}
+    <div class="review-decision" role="status">
+      <strong>{% if proposal.status == "accepted" %}已接受{% else %}已拒绝{% endif %}</strong>
+      {% if proposal.decision.reason %}<p>拒绝理由：{{ proposal.decision.reason }}</p>{% endif %}
+      <a href="/checklists/{{ artifact.id }}?version={{ proposal.decision.artifact_version }}">查看清单版本 {{ proposal.decision.artifact_version }}</a>
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% elif review.state == "done" %}
+<p>本次复核未生成提案。</p>
+{% endif %}
+{% if review.judgments %}
+<section class="review-judgments" aria-labelledby="review-judgments">
+  <h2 id="review-judgments">核对结果</h2>
+  <ul>
+    {% for result in review.judgments %}
+    <li><strong>{{ item_names.get(result.item_id, result.item_id) }} · {{ judgments.get(result.judgment, result.judgment) }}</strong> · {{ result.reason }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

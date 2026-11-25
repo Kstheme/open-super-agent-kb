@@ -11,12 +11,11 @@ from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 from fastapi import Request as ASGIRequest
 
 from openkb.server.cli import main
-from openkb.server.runtime import AppSettings
-from openkb.server.web import create_app, render
+from openkb.server.web import render
 
 
 class LocalAppTests(unittest.TestCase):
@@ -85,6 +84,7 @@ class LocalAppTests(unittest.TestCase):
 
         self.assertIn("OpenKB", html)
         self.assertIn("资料", html)
+        self.assertIn('href="/reviews">复核</a>', html)
         self.assertNotIn("fixture-only-secret", html)
         with urlopen(f"{address}/static/app.css", timeout=3) as response:
             self.assertIn("text/css", response.headers["Content-Type"])
@@ -101,7 +101,7 @@ class LocalAppTests(unittest.TestCase):
             self.assertEqual(caught.exception.code, status)
 
     def test_navigation_includes_registered_workspace_routers(self):
-        app = create_app(AppSettings.from_paths(self.data))
+        app = FastAPI()
         router = APIRouter()
         router.add_api_route("/documents", lambda: {}, name="documents")
         app.include_router(router)

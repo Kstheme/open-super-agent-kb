@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>复核</h1>
+{% if error %}<p class="review-alert" role="alert">{{ error }}</p>{% endif %}
+<div class="review-layout">
+  <section class="panel" aria-labelledby="new-review">
+    <h2 id="new-review">复核资料新版</h2>
+    {% if completed %}
+      {% if completed|length > 1 or not artifact %}
+      <form class="review-form" action="/reviews" method="get">
+        <label for="review-artifact">清单</label>
+        <select id="review-artifact" name="artifact_id" required>
+          {% for checklist in completed %}
+          <option value="{{ checklist.id }}"{% if artifact and artifact.id == checklist.id %} selected{% endif %}>{{ checklist.title }} · 版本 {{ checklist.version }} · {{ checklist.id[:8] }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">选择清单</button>
+      </form>
+      {% endif %}
+      {% if artifact %}
+      <p><a href="/checklists/{{ artifact.id }}?version={{ artifact.version }}">{{ artifact.title }} · 版本 {{ artifact.version }}</a></p>
+      {% if versions %}
+      <form class="review-form" id="review-upload" action="/reviews/start" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="artifact_id" value="{{ artifact.id }}">
+        <label for="review-before">资料版本</label>
+        <select id="review-before" name="before_version" required>
+          {% for id, name in versions.items() %}
+          <option value="{{ id }}">{{ name }} · {{ id[:8] }}</option>
+          {% endfor %}
+        </select>
+        <label for="review-source">新版文件</label>
+        <input id="review-source" type="file" name="source" accept=".docx" required>
+        <button type="submit">提交复核</button>
+      </form>
+      <p id="review-progress" role="status"></p>
+      <script defer src="/static/review.js"></script>
+      {% else %}
+      <p>这份清单没有可复核的 Word 资料。</p>
+      {% endif %}
+      {% endif %}
+    {% else %}
+    <p>先<a href="/checklists">生成一份清单</a>，再提交它引用的 Word 资料新版。</p>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="review-history">
+    <h2 id="review-history">复核历史</h2>
+    {% if previous %}
+    <ul class="delivery-list">
+      {% for report in previous %}
+      <li>
+        <a href="/reviews/{{ report.id }}">{{ report.revised_name }}</a>
+        <span>{{ states[report.state] }}</span>
+        <small>{{ report.artifact_title }} · 基于版本 {{ report.artifact_version }}</small>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>暂无复核记录。</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
