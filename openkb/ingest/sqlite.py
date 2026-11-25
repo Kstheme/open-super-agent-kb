@@ -98,6 +98,14 @@ CREATE INDEX IF NOT EXISTS open_delivery_conflicts_version
 """
 
 
+_WORD_AUDIT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS word_audits (
+    id TEXT PRIMARY KEY,
+    snapshot_json TEXT NOT NULL
+);
+"""
+
+
 _REVIEW_SCHEMA = """
 CREATE TABLE IF NOT EXISTS review_tasks (
     id TEXT PRIMARY KEY,
@@ -158,7 +166,7 @@ class SqliteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA + _REVIEW_SCHEMA)
+            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA + _REVIEW_SCHEMA + _WORD_AUDIT_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -354,6 +362,23 @@ class SqliteStore:
                  json.dumps(payload, ensure_ascii=False)),
             )
         return ()
+
+    def save_word_audit(self, audit: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                """INSERT INTO word_audits (id, snapshot_json) VALUES (?, ?)
+                   ON CONFLICT (id) DO UPDATE SET snapshot_json = excluded.snapshot_json""",
+                (audit["id"], json.dumps(audit, ensure_ascii=False)),
+            )
+
+    def word_audit(self, audit_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT snapshot_json FROM word_audits WHERE id = ?", (audit_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown Word audit: {audit_id}")
+        return json.loads(row[0])
 
     def flag_delivery_conflict(self, conflict: DeliveryConflict) -> None:
         with closing(self._connect()) as conn, conn:

@@ -2,6 +2,32 @@
 {% block content %}
 <section aria-labelledby="workspace-title">
   <h1 id="workspace-title">本地工作区</h1>
+  <section class="panel" aria-labelledby="word-audit-request">
+    <h2 id="word-audit-request">Word 交付审阅</h2>
+    <p>核对非网页 Word 的适用范围和数据表格重复表头要求。</p>
+    {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+    {% if versions %}
+    <form method="post" action="/word-audits" class="review-form">
+      <label for="word-audit-goal">审阅目标</label>
+      <textarea id="word-audit-goal" name="goal" rows="3" required>{{ goal }}</textarea>
+      <details>
+        <summary>指定资料版本（可选）</summary>
+        <fieldset class="source-picker">
+          <legend>选择资料版本</legend>
+          {% for version in versions %}
+          <label class="source-option">
+            <input type="checkbox" name="source" value="{{ version.id }}">
+            <span>{{ version.original_name }}<br><code>{{ version.id[:12] }}</code></span>
+          </label>
+          {% endfor %}
+        </fieldset>
+      </details>
+      <button type="submit">提交审阅</button>
+    </form>
+    {% else %}
+    <p>请先<a href="/documents">导入适用性和 Word 检查资料</a>。</p>
+    {% endif %}
+  </section>
   <div class="workspace-grid">
     {% for path, label, description in [
       ('/documents', '资料', '导入文件，查看资料及其版本。'),

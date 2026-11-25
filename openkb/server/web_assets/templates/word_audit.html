@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Word 交付审阅</h1>
+<section class="panel" aria-labelledby="word-audit-answer">
+  <h2 id="word-audit-answer">审阅建议</h2>
+  <p><strong>委托目标</strong> · {{ audit.goal }}</p>
+  {% if audit.gaps %}
+  <p role="status">部分要求依据不足，现有建议只适用于有原文支持的条目。</p>
+  {% else %}
+  <p role="status">已查证适用范围和表头要求。</p>
+  {% endif %}
+  <ul>
+    {% for item in audit.covered %}
+    <li data-slot-id="{{ item.slot_id }}">
+      <h3>{{ slots[item.slot_id] }}</h3>
+      <p>{{ item.check }}</p>
+      {% if item.slot_id == "data_tables" %}
+      <p>单页和跨页数据表格均适用。未设置重复表头的表格需要补设。</p>
+      {% endif %}
+      <details data-claim-id="{{ item.claim_id }}">
+        <summary>查看声明与原文证据</summary>
+        <p><strong>声明</strong> · {{ item.check }}</p>
+        {% for evidence in item.evidence %}
+        <section class="evidence-detail">
+          <strong>证据</strong>
+          <blockquote>{{ evidence.quote }}</blockquote>
+          <dl>
+            <dt>原文块</dt>
+            <dd>{{ positions[evidence.id] }}</dd>
+            <dt>资料版本</dt>
+            <dd>{{ evidence.original_name }} · <code>{{ evidence.version_id }}</code></dd>
+          </dl>
+          <a href="/evidence/{{ evidence.id }}">打开原文与原件</a>
+        </section>
+        {% endfor %}
+      </details>
+    </li>
+    {% endfor %}
+    {% for gap in audit.gaps %}
+    <li data-slot-id="{{ gap.id }}"><h3>{{ gap.title }} · 依据不足</h3></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

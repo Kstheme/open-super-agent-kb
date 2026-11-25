@@ -1,11 +1,12 @@
 """The Section 508 template for a non-web Word self-check."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from openkb.core.delivery import Coverage, Slot
 from openkb.ingest.claims import ClaimStore, compliance_claim
 from openkb.ingest.ledger import EvidenceValidator, Ledger
-from openkb.ingest.model import Block, Evidence, Version
+from openkb.ingest.model import Block, Evidence, Version, VersionSummary
 
 
 SKELETON = (
@@ -117,8 +118,14 @@ def _same_basis(
     )
 
 
-def supports_slot(source: Version, slot_id: str) -> bool:
+def supports_slot(source: Version | VersionSummary, slot_id: str) -> bool:
     return source.original_name.casefold() == RULES[slot_id].source
+
+
+def supports_audit_slot(source: Version | VersionSummary, slot_id: str) -> bool:
+    return supports_slot(source, slot_id) or (
+        slot_id == "data_tables" and source.original_name.casefold() == "508-word-checklist.docx"
+    )
 
 
 def find_coverage(
@@ -126,10 +133,12 @@ def find_coverage(
     sources: tuple[Version, ...],
     ledger: Ledger,
     claims: ClaimStore,
+    *,
+    match_source: Callable[[Version, str], bool] = supports_slot,
 ) -> Coverage | None:
     rule = RULES[slot.id]
     for version in sources:
-        if not supports_slot(version, slot.id):
+        if not match_source(version, slot.id):
             continue
         evidence = _source_evidence(version, rule)
         if not evidence:
