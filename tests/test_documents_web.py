@@ -30,7 +30,7 @@ class DocumentsWebTests(BrowserCase):
         self.upload("团队规则.md", "# 同名的另一份规则".encode())
 
         page = self.page("/documents")
-        self.assertEqual(page.count("团队规则.md"), 2)
+        self.assertEqual(page.count("<h3>团队规则.md</h3>"), 2)
         ids = re.findall(r'data-(?:document|version)-id="([^"]+)"', page)
         self.assertEqual(len(set(ids)), 4)
         self.assertIn("已入库", page)

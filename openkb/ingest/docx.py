@@ -113,6 +113,13 @@ class _WordDocument:
                 )
             active_merges = next_merges
 
+    def repeating_table_headers(self) -> Iterator[bool]:
+        for table in self.body.findall("w:tbl", self._ns):
+            first_row = self._find(table, "w:tr")
+            header = self._find(first_row, "w:trPr/w:tblHeader") if first_row is not None else None
+            enabled = header is not None and header.get(self._name("val"), "true") in ("true", "1", "on")
+            yield enabled
+
     def blocks(self) -> Iterator[ParsedBlock]:
         headings = []
         paragraph = table = 0
@@ -143,15 +150,28 @@ class _WordDocument:
                 yield from self._rows(node, table, path, clause)
 
 
-def parse_docx(data: bytes) -> ParsedDocument:
+def _read_docx(data: bytes) -> _WordDocument:
     try:
         with ZipFile(BytesIO(data)) as archive:
             root = ElementTree.fromstring(archive.read("word/document.xml"))
             styles = None
             if "word/styles.xml" in archive.namelist():
                 styles = ElementTree.fromstring(archive.read("word/styles.xml"))
-        blocks = tuple(_WordDocument(root, styles).blocks())
+        return _WordDocument(root, styles)
     except (BadZipFile, KeyError, ElementTree.ParseError, ValueError) as error:
+        raise ValueError(f"Cannot parse DOCX: {error}") from error
+
+
+def inspect_table_headers(data: bytes) -> tuple[bool, ...]:
+    """Read explicit repeat-header settings from top-level table first rows."""
+    return tuple(_read_docx(data).repeating_table_headers())
+
+
+def parse_docx(data: bytes) -> ParsedDocument:
+    document = _read_docx(data)
+    try:
+        blocks = tuple(document.blocks())
+    except ValueError as error:
         raise ValueError(f"Cannot parse DOCX: {error}") from error
     if blocks:
         return ParsedDocument(blocks)

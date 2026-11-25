@@ -3,7 +3,9 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import asdict
+from hashlib import sha256
 from pathlib import Path
+from uuid import uuid4
 
 from openkb.core.delivery import DeliveryConflict
 
@@ -98,6 +100,42 @@ CREATE INDEX IF NOT EXISTS open_delivery_conflicts_version
 """
 
 
+_WORD_AUDIT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS word_audits (
+    id TEXT PRIMARY KEY,
+    snapshot_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS word_audit_decisions (
+    id TEXT PRIMARY KEY,
+    audit_id TEXT NOT NULL REFERENCES word_audits(id),
+    choice TEXT NOT NULL CHECK (choice IN ('release', 'return')),
+    reason TEXT NOT NULL,
+    audit_snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS word_audit_decisions_audit ON word_audit_decisions(audit_id);
+CREATE TABLE IF NOT EXISTS word_audit_review_imports (
+    version_id TEXT PRIMARY KEY REFERENCES source_versions(id),
+    decision_boundary INTEGER NOT NULL,
+    processed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS word_audit_reviews (
+    id TEXT PRIMARY KEY,
+    decision_id TEXT NOT NULL REFERENCES word_audit_decisions(id),
+    version_id TEXT NOT NULL REFERENCES source_versions(id),
+    snapshot_json TEXT NOT NULL,
+    UNIQUE (decision_id, version_id)
+);
+CREATE TABLE IF NOT EXISTS word_audit_review_confirmations (
+    review_id TEXT PRIMARY KEY REFERENCES word_audit_reviews(id),
+    choice TEXT NOT NULL CHECK (choice IN ('keep', 'adjust')),
+    resulting_choice TEXT NOT NULL CHECK (resulting_choice IN ('release', 'return')),
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
 _REVIEW_SCHEMA = """
 CREATE TABLE IF NOT EXISTS review_tasks (
     id TEXT PRIMARY KEY,
@@ -158,7 +196,7 @@ class SqliteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA + _REVIEW_SCHEMA)
+            conn.executescript(_SCHEMA + _CLAIM_SCHEMA + _DELIVERY_SCHEMA + _REVIEW_SCHEMA + _WORD_AUDIT_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -185,6 +223,14 @@ class SqliteStore:
                 "INSERT INTO source_blocks (id, version_id, ordinal, data) VALUES (?, ?, ?, ?)",
                 ((block.id, version.id, block.ordinal, json.dumps(asdict(block), ensure_ascii=False))
                  for block in version.blocks),
+            )
+            conn.execute(
+                """INSERT INTO word_audit_review_imports (version_id, decision_boundary)
+                   SELECT ?, boundary FROM (SELECT MAX(rowid) AS boundary FROM word_audit_decisions)
+                   WHERE boundary IS NOT NULL AND EXISTS (
+                       SELECT 1 FROM source_versions WHERE document_id = ? AND id <> ?
+                   )""",
+                (version.id, version.document_id, version.id),
             )
         return bool(inserted)
 
@@ -354,6 +400,279 @@ class SqliteStore:
                  json.dumps(payload, ensure_ascii=False)),
             )
         return ()
+
+    def save_word_audit(self, audit: dict, *, previous: dict | None = None) -> None:
+        with closing(self._connect()) as conn, conn:
+            if previous is not None:
+                conn.execute("BEGIN IMMEDIATE")
+                current = self._word_audit(conn, audit["id"])
+                if current != previous:
+                    raise ValueError("此委托已有新结果，请重新核对。")
+            conn.execute(
+                """INSERT INTO word_audits (id, snapshot_json) VALUES (?, ?)
+                   ON CONFLICT (id) DO UPDATE SET snapshot_json = excluded.snapshot_json""",
+                (audit["id"], json.dumps(audit, ensure_ascii=False)),
+            )
+
+    def latest_word_audit(self) -> dict | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT snapshot_json FROM word_audits ORDER BY rowid DESC LIMIT 1").fetchone()
+        return json.loads(row[0]) if row is not None else None
+
+    def word_audit(self, audit_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            return self._word_audit(conn, audit_id)
+
+    @staticmethod
+    def _word_audit(conn: sqlite3.Connection, audit_id: str) -> dict:
+        row = conn.execute(
+            "SELECT snapshot_json FROM word_audits WHERE id = ?", (audit_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown Word audit: {audit_id}")
+        return json.loads(row[0])
+
+    @staticmethod
+    def word_audit_snapshot_id(audit: dict) -> str:
+        snapshot = json.dumps(audit, ensure_ascii=False, sort_keys=True)
+        return sha256(snapshot.encode("utf-8")).hexdigest()
+
+    def record_word_audit_decision(
+        self, audit_id: str, choice: str, reason: str, *, answer_snapshot: str | None = None,
+    ) -> dict:
+        if choice not in ("release", "return"):
+            raise ValueError("请选择放行或退回修改。")
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("请填写决定理由。")
+        decision_id = uuid4().hex
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            audit = self._word_audit(conn, audit_id)
+            if answer_snapshot is not None and answer_snapshot != self.word_audit_snapshot_id(audit):
+                raise ValueError("审阅建议已更新，请核对后再保存决定。")
+            if audit.get("needs_page_span"):
+                raise ValueError("请先补充表格是否跨页，再保存决定。")
+            if not audit["covered"]:
+                raise ValueError("当前审阅暂无有依据的建议。")
+            versions = {
+                proof["version_id"] for item in audit["covered"] for proof in item["evidence"]
+            }
+            if any(conn.execute(
+                """SELECT 1 FROM source_versions AS cited JOIN source_versions AS current
+                     ON current.document_id = cited.document_id AND current.rowid > cited.rowid
+                   WHERE cited.id = ? LIMIT 1""",
+                (version_id,),
+            ).fetchone() for version_id in versions):
+                raise ValueError("引用的资料已有新版。请在工作区基于最新资料重新提交审阅，再保存决定。")
+            conn.execute(
+                """INSERT INTO word_audit_decisions (id, audit_id, choice, reason, audit_snapshot_json)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (decision_id, audit_id, choice, reason, json.dumps(audit, ensure_ascii=False)),
+            )
+            return self._word_audit_decision(conn, decision_id)
+
+    def word_audit_decision(self, decision_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            decision = self._word_audit_decision(conn, decision_id)
+            confirmation = self._latest_word_audit_confirmation(conn, decision_id)
+            decision["effective_choice"] = confirmation or decision["choice"]
+            return decision
+
+    def _word_audit_decision(self, conn: sqlite3.Connection, decision_id: str) -> dict:
+        row = conn.execute(
+            """SELECT id, audit_id, choice, reason, created_at, audit_snapshot_json
+               FROM word_audit_decisions WHERE id = ?""",
+            (decision_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown Word audit decision: {decision_id}")
+        return self._decision_snapshot(row)
+
+    def word_audit_decisions(self, audit_id: str | None = None) -> tuple[dict, ...]:
+        query = """SELECT id, audit_id, choice, reason, created_at, audit_snapshot_json
+                   FROM word_audit_decisions"""
+        where, parameters = (" WHERE audit_id = ?", (audit_id,)) if audit_id is not None else ("", ())
+        with closing(self._connect()) as conn:
+            rows = conn.execute(query + where + " ORDER BY rowid DESC", parameters)
+            return tuple(self._decision_snapshot(row) for row in rows)
+
+    @staticmethod
+    def _decision_snapshot(row: tuple) -> dict:
+        decision_id, audit_id, choice, reason, created_at, audit_json = row
+        return {
+            "id": decision_id,
+            "audit_id": audit_id,
+            "choice": choice,
+            "reason": reason,
+            "created_at": created_at,
+            "audit": json.loads(audit_json),
+        }
+
+    def pending_word_audit_imports(self) -> tuple[str, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT version_id FROM word_audit_review_imports WHERE processed = 0 ORDER BY rowid",
+            )
+            return tuple(row[0] for row in rows)
+
+    def word_audit_import_decisions(self, version_id: str) -> tuple[dict, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT id, audit_id, choice, reason, created_at, audit_snapshot_json
+                   FROM word_audit_decisions WHERE rowid <= (
+                       SELECT decision_boundary FROM word_audit_review_imports WHERE version_id = ?
+                   )""",
+                (version_id,),
+            )
+            return tuple(self._decision_snapshot(row) for row in rows)
+
+    def finish_word_audit_import(self, version_id: str, reviews: Sequence[dict]) -> None:
+        with closing(self._connect()) as conn, conn:
+            processed = conn.execute(
+                "UPDATE word_audit_review_imports SET processed = 1 WHERE version_id = ? AND processed = 0",
+                (version_id,),
+            ).rowcount
+            if processed:
+                conn.executemany(
+                    """INSERT INTO word_audit_reviews (id, decision_id, version_id, snapshot_json)
+                       VALUES (?, ?, ?, ?)""",
+                    ((review["id"], review["decision_id"], version_id, json.dumps(review, ensure_ascii=False))
+                     for review in reviews),
+                )
+
+    def retry_word_audit_review(self, review_id: str, review: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            previous = self._word_audit_review(conn, review_id)
+            if previous["state"] != "failed":
+                raise ValueError("此复核已恢复。")
+            conn.execute(
+                "UPDATE word_audit_reviews SET snapshot_json = ? WHERE id = ?",
+                (json.dumps(review, ensure_ascii=False), review_id),
+            )
+
+
+    def word_audit_review(self, review_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            return self._word_audit_review(conn, review_id)
+
+    @staticmethod
+    def _word_audit_review(conn: sqlite3.Connection, review_id: str) -> dict:
+        row = conn.execute(
+            """SELECT review.snapshot_json, confirmation.choice, confirmation.resulting_choice,
+                      confirmation.reason, confirmation.created_at
+               FROM word_audit_reviews AS review LEFT JOIN word_audit_review_confirmations AS confirmation
+                 ON confirmation.review_id = review.id
+               WHERE review.id = ?""",
+            (review_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown Word audit review: {review_id}")
+        return SqliteStore._word_audit_review_snapshot(row)
+
+    @staticmethod
+    def _word_audit_review_snapshot(row: tuple) -> dict:
+        snapshot, choice, resulting_choice, reason, created_at = row
+        review = json.loads(snapshot)
+        review["confirmation"] = None
+        if choice is not None:
+            review["state"] = "confirmed"
+            review["confirmation"] = {
+                "choice": choice, "resulting_choice": resulting_choice,
+                "reason": reason, "created_at": created_at,
+            }
+        return review
+
+    def word_audit_reviews(
+        self, decision_id: str | None = None, *, before_version: str | None = None,
+    ) -> tuple[dict, ...]:
+        conditions = []
+        parameters = []
+        if decision_id is not None:
+            conditions.append("review.decision_id = ?")
+            parameters.append(decision_id)
+        if before_version is not None:
+            conditions.append("""EXISTS (
+                SELECT 1 FROM source_versions AS incoming
+                WHERE incoming.id = ? AND incoming.document_id = source.document_id
+                  AND source.rowid < incoming.rowid
+            )""")
+            parameters.append(before_version)
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        order = "source.rowid" if before_version is not None else "review.rowid"
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT review.snapshot_json, confirmation.choice, confirmation.resulting_choice,
+                          confirmation.reason, confirmation.created_at
+                   FROM word_audit_reviews AS review
+                   JOIN source_versions AS source ON source.id = review.version_id
+                   LEFT JOIN word_audit_review_confirmations AS confirmation
+                     ON confirmation.review_id = review.id""" + where + f" ORDER BY {order} DESC",
+                parameters,
+            )
+            return tuple(self._word_audit_review_snapshot(row) for row in rows)
+
+    @staticmethod
+    def _latest_word_audit_confirmation(
+        conn: sqlite3.Connection, decision_id: str,
+    ) -> str | None:
+        row = conn.execute(
+            """SELECT confirmation.resulting_choice
+               FROM word_audit_review_confirmations AS confirmation
+               JOIN word_audit_reviews AS review ON review.id = confirmation.review_id
+               WHERE review.decision_id = ? ORDER BY confirmation.rowid DESC LIMIT 1""",
+            (decision_id,),
+        ).fetchone()
+        return row[0] if row is not None else None
+
+    @staticmethod
+    def _supersede_older_word_audit_reviews(conn: sqlite3.Connection, review: dict) -> None:
+        older = conn.execute(
+            """SELECT prior.id, prior.snapshot_json
+               FROM word_audit_reviews AS prior
+               JOIN source_versions AS source ON source.id = prior.version_id
+               JOIN source_versions AS confirmed ON confirmed.id = ?
+               WHERE prior.decision_id = ? AND source.document_id = confirmed.document_id
+                 AND source.rowid < confirmed.rowid
+                 AND NOT EXISTS (
+                     SELECT 1 FROM word_audit_review_confirmations AS confirmation
+                     WHERE confirmation.review_id = prior.id
+                 )""",
+            (review["version_id"], review["decision_id"]),
+        ).fetchall()
+        for review_id, snapshot in older:
+            previous = json.loads(snapshot)
+            if previous["state"] in {"pending", "failed"}:
+                previous.update(state="superseded", superseded_by=review["id"])
+                conn.execute(
+                    "UPDATE word_audit_reviews SET snapshot_json = ? WHERE id = ?",
+                    (json.dumps(previous, ensure_ascii=False), review_id),
+                )
+
+    def confirm_word_audit_review(self, review_id: str, choice: str, reason: str,
+                                  adjusted_choice: str = "") -> None:
+        if choice not in {"keep", "adjust"} or (choice == "adjust" and adjusted_choice not in {"release", "return"}):
+            raise ValueError("请选择保留原决定、放行或退回修改。")
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("请填写复核理由。")
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            review = self._word_audit_review(conn, review_id)
+            if review["state"] == "superseded":
+                raise ValueError("更新的复核已确认。请查看当前决定。")
+            if review["state"] != "pending":
+                raise ValueError("这项复核已处理或暂不可确认。")
+            decision = self._word_audit_decision(conn, review["decision_id"])
+            current_choice = self._latest_word_audit_confirmation(conn, decision["id"]) or decision["choice"]
+            resulting_choice = adjusted_choice if choice == "adjust" else current_choice
+            conn.execute(
+                """INSERT INTO word_audit_review_confirmations
+                   (review_id, choice, resulting_choice, reason) VALUES (?, ?, ?, ?)""",
+                (review_id, choice, resulting_choice, reason),
+            )
+            self._supersede_older_word_audit_reviews(conn, review)
 
     def flag_delivery_conflict(self, conflict: DeliveryConflict) -> None:
         with closing(self._connect()) as conn, conn:

@@ -10,6 +10,7 @@
 <div class="document-notice" role="status">
   <strong>导入成功</strong>
   <p>{{ imported.original_name }}</p>
+  {% if revision_reviews %}<a href="/word-audit-reviews">查看自动发起的决定复核</a>{% endif %}
 </div>
 {% endif %}
 <section class="panel document-upload" aria-labelledby="import-title">
@@ -18,6 +19,15 @@
     <label for="source">本地文件</label>
     <input id="source" name="source" type="file" accept=".md,.markdown,.pdf,.docx" aria-describedby="supported-formats" required>
     <p id="supported-formats">支持 Markdown、PDF 和 DOCX。</p>
+    {% if versions %}
+    <label for="previous-version">导入新版（可选）</label>
+    <select id="previous-version" name="previous_version">
+      <option value="">作为新资料导入</option>
+      {% for version in versions %}
+      <option value="{{ version.id }}">{{ version.original_name }} · {{ version.id[:12] }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
     <button type="submit">导入资料</button>
   </form>
 </section>

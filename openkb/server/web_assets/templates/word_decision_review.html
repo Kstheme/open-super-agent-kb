@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>人工决定复核</h1>
+{% include "word_audit_workflow.html" %}
+<section class="panel" aria-labelledby="decision-review-title">
+  <h2 id="decision-review-title">{{ labels[review.state] }}</h2>
+  <p><strong>新版资料</strong> · {{ version.original_name }} · <code>{{ version.id }}</code></p>
+  <p><strong>原审阅目标</strong> · {{ decision.audit.goal }}</p>
+  <p><strong>原人工决定</strong> · {{ "放行" if decision.choice == "release" else "退回修改" }}</p>
+  {% if decision.effective_choice != decision.choice %}
+  <p><strong>当前人工决定</strong> · {{ "放行" if decision.effective_choice == "release" else "退回修改" }}</p>
+  {% endif %}
+  <p><strong>原决定理由</strong> · {{ decision.reason }}</p>
+  <a href="/word-audit-decisions/{{ decision.id }}">查看原决定及证据</a>
+  {% if review.state == "superseded" %}
+  <p><a href="/word-audit-reviews/{{ review.superseded_by }}">查看已确认的新版复核</a></p>
+  {% elif review.state == "unchanged" %}
+  <p>原结论未变，原决定继续有效。</p>
+  {% elif review.state == "failed" %}
+  <p>暂时无法完成复核，原决定及依据仍可查。可重试复核。</p>
+  <form action="/word-audit-reviews/{{ review.id }}/retry" method="post">
+    <button type="submit">重试复核</button>
+  </form>
+  {% endif %}
+</section>
+<section class="panel" aria-labelledby="decision-impact-title">
+  <h2 id="decision-impact-title" tabindex="-1">从变更原文查看影响</h2>
+  {% for item in review["items"] %}
+  <article class="panel" data-claim-id="{{ item.claim_id }}">
+    <h3>受影响声明 · {{ item.old_check }}</h3>
+    <p><a href="/word-audit-decisions/{{ decision.id }}#word-audit-answer">查看受影响的审阅回答</a></p>
+    <div class="review-comparison">
+      <section>
+        <h4>旧版依据</h4>
+        {% set proof = item.old_evidence %}
+        <blockquote>{{ proof.quote }}</blockquote>
+        <p>{{ positions[proof.id] }} · <code>{{ proof.version_id }}</code></p>
+        <a href="/evidence/{{ proof.id }}">打开旧版原文与原件</a>
+      </section>
+      <section>
+        <h4>新版依据</h4>
+        {% if item.new_alternatives %}
+        <p>新版依据相互冲突。</p>
+        {% for alternative in item.new_alternatives %}
+        <p>{{ alternative.check }}</p>
+        {% for proof in alternative.evidence %}
+        <blockquote>{{ proof.quote }}</blockquote>
+        <p>{{ positions[proof.id] }} · <code>{{ proof.version_id }}</code></p>
+        <a href="/evidence/{{ proof.id }}">打开新版原文与原件</a>
+        {% endfor %}
+        {% endfor %}
+        {% elif item.new_evidence %}
+        {% set proof = item.new_evidence %}
+        <p>{{ item.new_check }}</p>
+        <blockquote>{{ proof.quote }}</blockquote>
+        <p>{{ positions[proof.id] }} · <code>{{ proof.version_id }}</code></p>
+        <a href="/evidence/{{ proof.id }}">打开新版原文与原件</a>
+        {% else %}
+        <p>{{ "新版缺少支撑原结论的依据。" if item.basis == "missing" else "无法确认新版中对应的依据，需核对新版原文。" }}</p>
+        {% endif %}
+      </section>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+<section class="panel" aria-labelledby="decision-confirm-title">
+  <h2 id="decision-confirm-title">人工确认</h2>
+  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  {% if review.confirmation %}
+  <p><strong>{{ "保留原决定" if review.confirmation.choice == "keep" else "调整决定" }}</strong> · {{ "放行" if review.confirmation.resulting_choice == "release" else "退回修改" }}</p>
+  <p>{{ review.confirmation.reason }}</p>
+  {% elif review.state == "pending" %}
+  <form action="/word-audit-reviews/{{ review.id }}/confirm" method="post" class="review-form">
+    <label for="review-choice">人工选择</label>
+    <select id="review-choice" name="choice" required>
+      <option value="">选择如何处理</option>
+      <option value="keep">保留原决定</option>
+      <option value="adjust">调整决定</option>
+    </select>
+    <label for="adjusted-choice">调整后的决定（选择调整时必填）</label>
+    <select id="adjusted-choice" name="adjusted_choice">
+      <option value="">选择决定</option>
+      <option value="release">放行</option>
+      <option value="return">退回修改</option>
+    </select>
+    <label for="review-reason">复核理由</label>
+    <textarea id="review-reason" name="reason" rows="2" required></textarea>
+    <button type="submit">保存人工确认</button>
+  </form>
+  {% endif %}
+</section>
+{% include "word_audit_workflow_actions.html" %}
+<a href="/">返回工作区</a>
+{% endblock %}

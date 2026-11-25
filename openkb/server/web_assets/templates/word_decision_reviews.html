@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>决定复核</h1>
+{% if entries %}
+<ul class="delivery-list">
+  {% for review, decision in entries %}
+  <li>
+    <a href="/word-audit-reviews/{{ review.id }}">{{ decision.audit.goal }}</a>
+    <small>{{ labels[review.state] }}</small>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>暂无决定复核。</p>
+{% endif %}
+<a href="/">返回工作区</a>
+{% endblock %}

@@ -1,11 +1,13 @@
 """The Section 508 template for a non-web Word self-check."""
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
+import re
 
 from openkb.core.delivery import Coverage, Slot
 from openkb.ingest.claims import ClaimStore, compliance_claim
 from openkb.ingest.ledger import EvidenceValidator, Ledger
-from openkb.ingest.model import Block, Evidence, Version
+from openkb.ingest.model import Block, Evidence, Version, VersionSummary
 
 
 SKELETON = (
@@ -17,6 +19,13 @@ SKELETON = (
 CHECKLIST_TITLE = "非网页 Word 文档无障碍自查清单"
 SCOPE_SOURCE = "508-applicability-checklist.docx"
 WORD_SOURCE = "section508-word.docx"
+MULTIPAGE_TABLE_CHECK = "只有跨页数据表格要求重复表头。"
+_REPEAT_HEADER_REQUIREMENT = re.compile(
+    r"(?:all (?:data )?tables|(?:data )?tables|each (?:data )?table|every (?:data )?table) "
+    r"(?:must|shall) (?:repeat (?:their|the|its) header rows?|"
+    r"(?:have|use) (?:a )?repeating header row)[.]?",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -117,8 +126,37 @@ def _same_basis(
     )
 
 
-def supports_slot(source: Version, slot_id: str) -> bool:
+def supports_slot(source: Version | VersionSummary, slot_id: str) -> bool:
     return source.original_name.casefold() == RULES[slot_id].source
+
+
+def supports_audit_slot(source: Version | VersionSummary, slot_id: str) -> bool:
+    return supports_slot(source, slot_id) or (
+        slot_id == "data_tables" and source.original_name.casefold() == "508-word-checklist.docx"
+    )
+
+
+def _coverage_for_rule(
+    slot: Slot, version: Version, rule: Rule, ledger: Ledger, claims: ClaimStore,
+) -> Coverage | None:
+    evidence = _source_evidence(version, rule)
+    if not evidence:
+        return None
+    candidate = compliance_claim(version.id, rule.check, evidence)
+    claim = next(
+        (claim for claim in claims.claims(version.id)
+         if claim.profile == candidate.profile
+         and claim.text.strip() in (rule.check, rule.equivalent_claim)
+         and _same_basis(claim.evidence, evidence, version, rule)),
+        None,
+    )
+    if claim is None:
+        claims.save_claims((candidate,))
+        claim = candidate
+    return Coverage(
+        slot.id, claim.id, rule.check, rule.method,
+        tuple(ledger.locate_evidence(proof.id) for proof in claim.evidence),
+    )
 
 
 def find_coverage(
@@ -126,27 +164,65 @@ def find_coverage(
     sources: tuple[Version, ...],
     ledger: Ledger,
     claims: ClaimStore,
+    *,
+    match_source: Callable[[Version, str], bool] = supports_slot,
 ) -> Coverage | None:
-    rule = RULES[slot.id]
     for version in sources:
-        if not supports_slot(version, slot.id):
-            continue
-        evidence = _source_evidence(version, rule)
-        if not evidence:
-            continue
-        candidate = compliance_claim(version.id, rule.check, evidence)
-        claim = next(
-            (claim for claim in claims.claims(version.id)
-             if claim.profile == candidate.profile
-             and claim.text.strip() in (rule.check, rule.equivalent_claim)
-             and _same_basis(claim.evidence, evidence, version, rule)),
-            None,
-        )
-        if claim is None:
-            claims.save_claims((candidate,))
-            claim = candidate
-        return Coverage(
-            slot.id, claim.id, rule.check, rule.method,
-            tuple(ledger.locate_evidence(proof.id) for proof in claim.evidence),
-        )
+        if match_source(version, slot.id):
+            coverage = _coverage_for_rule(slot, version, RULES[slot.id], ledger, claims)
+            if coverage is not None:
+                return coverage
     return None
+
+
+def _table_rule_paraphrases(version: Version, rule: Rule):
+    for block in version.blocks:
+        if block.kind != "table_row" or block.heading_path[-1:] != (rule.section,):
+            continue
+        for cell in block.locator.table_cells:
+            if cell.text_start is None or cell.text_end is None:
+                continue
+            quote = block.text[cell.text_start:cell.text_end]
+            if quote not in rule.quotes and _REPEAT_HEADER_REQUIREMENT.fullmatch(" ".join(quote.split())):
+                yield replace(rule, quotes=(quote,))
+
+
+def audit_coverages(
+    slot: Slot,
+    sources: tuple[Version, ...],
+    ledger: Ledger,
+    claims: ClaimStore,
+    *,
+    eligible: Callable[[Version, str], bool] = supports_audit_slot,
+) -> tuple[Coverage, ...]:
+    """Retain proofs for the supported rule interpretations in the selected versions."""
+    rule = RULES[slot.id]
+    rules = (rule,)
+    if slot.id == "data_tables":
+        rules += (
+            Rule(rule.source, rule.section, ("Data tables must repeat their header rows.",),
+                 rule.check, rule.method),
+            Rule(rule.source, rule.section, ("Repeat the header row for each table.",),
+                 rule.check, rule.method),
+            Rule(rule.source, rule.section,
+                 ("Only data tables that span multiple pages must repeat their header row.",),
+                 MULTIPAGE_TABLE_CHECK,
+                 "单页数据表格不适用这条要求。未设置重复表头的跨页表格需要补设。"),
+        )
+
+    found = []
+    for version in sources:
+        if not version.original_name.casefold().endswith(".docx") or not eligible(version, slot.id):
+            continue
+        candidates = rules
+        if slot.id == "data_tables":
+            known_quotes = {quote for candidate in rules for quote in candidate.quotes}
+            candidates += tuple(
+                candidate for candidate in _table_rule_paraphrases(version, rule)
+                if candidate.quotes[0] not in known_quotes
+            )
+        for candidate in candidates:
+            coverage = _coverage_for_rule(slot, version, candidate, ledger, claims)
+            if coverage is not None:
+                found.append(coverage)
+    return tuple(found)

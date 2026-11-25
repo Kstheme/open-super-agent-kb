@@ -25,6 +25,7 @@ _NAVIGATION = (
     ("documents", "资料"),
     ("checklists", "清单"),
     ("reviews", "复核"),
+    ("word_audit_decisions", "审阅决定"),
     ("status", "连接状态"),
 )
 
@@ -46,7 +47,7 @@ def render(request: Request, template: str, *, status_code: int = 200, **context
 
 
 def create_app(settings: AppSettings) -> FastAPI:
-    from . import checklists, documents, reviews
+    from . import checklists, documents, reviews, word_audits, word_decision_reviews
     from .health import status
 
     app = FastAPI(title="OpenKB", docs_url=None, redoc_url=None, openapi_url=None)
@@ -74,10 +75,12 @@ def create_app(settings: AppSettings) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def workspace(request: Request):
-        return render(request, "workspace.html", title="工作区")
+        return word_audits.workspace(request)
 
     app.add_api_route("/status", status, name="status", response_class=HTMLResponse)
     app.include_router(documents.router)
     app.include_router(checklists.router)
     app.include_router(reviews.router)
+    app.include_router(word_audits.router)
+    app.include_router(word_decision_reviews.router)
     return app
