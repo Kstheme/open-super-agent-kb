@@ -20,8 +20,18 @@ REVIEW_STATE_LABELS = {
 }
 
 
+def _effective_proof(item: dict, proof: dict, acknowledged: dict) -> tuple[str, str, dict]:
+    claim_id = item["claim_id"]
+    check = item["check"]
+    while (reviewed := acknowledged.get((item["slot_id"], proof["id"]))) is not None:
+        proof = reviewed["new_evidence"]
+        check = reviewed["new_check"]
+        claim_id = reviewed.get("new_claim_id") or claim_id
+    return claim_id, check, proof
+
+
 def _review_for_decision(
-    after: Version, decision: dict, align, coverages,
+    after: Version, decision: dict, earlier_reviews: tuple[dict, ...], align, coverages,
 ) -> dict | None:
     review = {
         "id": uuid4().hex,
@@ -30,11 +40,19 @@ def _review_for_decision(
         "state": "pending",
         "items": [],
     }
+    acknowledged = {
+        (item["slot_id"], item["old_evidence"]["id"]): item
+        for prior in reversed(earlier_reviews)
+        if prior["state"] in {"confirmed", "unchanged"}
+        for item in prior["items"]
+        if item["new_evidence"] is not None
+    }
     try:
         for item in decision["audit"]["covered"]:
             for proof in item["evidence"]:
                 if proof["document_id"] != after.document_id or proof["version_id"] == after.id:
                     continue
+                claim_id, check, proof = _effective_proof(item, proof, acknowledged)
                 traces, _warnings = trace_blocks(align(proof["version_id"]), (proof["block_id"],))
                 trace = traces[proof["block_id"]]
                 alternatives = coverages(item["slot_id"])
@@ -48,13 +66,14 @@ def _review_for_decision(
                 elif not alternatives:
                     basis = "missing"
                 else:
-                    basis = "unchanged" if item["check"] in checks else "material"
+                    basis = "unchanged" if check in checks else "material"
                 candidate = alternatives[0] if basis in {"unchanged", "material"} else None
                 review["items"].append({
                     "slot_id": item["slot_id"],
-                    "claim_id": item["claim_id"],
-                    "old_check": item["check"],
+                    "claim_id": claim_id,
+                    "old_check": check,
                     "old_evidence": proof,
+                    "new_claim_id": candidate.claim_id if candidate else None,
                     "new_check": candidate.check if candidate else None,
                     "new_evidence": asdict(candidate.evidence[0]) if candidate else None,
                     "new_alternatives": [asdict(value) for value in alternatives] if basis == "conflict" else [],
@@ -78,7 +97,11 @@ def _revision_review(store: SqliteStore, after: Version):
     def coverages(slot_id: str):
         return audit_coverages(Slot(slot_id, ""), (after,), ledger, store, eligible=lambda *_: True)
 
-    return lambda decision: _review_for_decision(after, decision, align, coverages)
+    def calculate(decision: dict):
+        prior = store.word_audit_reviews(decision["id"], before_version=after.id)
+        return _review_for_decision(after, decision, prior, align, coverages)
+
+    return calculate
 
 
 def reviews_for_revision(store: SqliteStore, after: Version) -> list[dict]:

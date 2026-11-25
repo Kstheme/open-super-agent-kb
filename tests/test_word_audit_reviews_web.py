@@ -148,3 +148,37 @@ class WordAuditReviewWebTests(BrowserCase):
         with self.post_form(reviews[0] + "/retry", {}) as response:
             self.assertIn("待人工确认", response.read().decode("utf-8"))
         self.assertEqual(self.page("/word-audit-reviews").count('href="/word-audit-reviews/'), 2)
+
+    def test_successive_revisions_use_each_decisions_latest_acknowledged_basis(self):
+        version, decisions = self.recorded_decisions()
+        history = "/word-audit-reviews"
+        revision = write_word(self.root / "narrowed.docx", (NEW_RULE,))
+        self.import_revision(version, revision)
+        second_reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(history))
+        acknowledged = next(link for link in second_reviews if decisions[0] in self.page(link))
+        with self.post_form(acknowledged + "/confirm", {
+            "choice": "adjust", "adjusted_choice": "release", "reason": "采用新版跨页规则。",
+        }) as response:
+            self.assertIn("已人工确认", response.read().decode("utf-8"))
+
+        notes_only = write_word(
+            self.root / "notes.docx", (NEW_RULE,), heading_rule="Unrelated heading notes.",
+        )
+        self.import_revision(version, notes_only)
+        third_reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(history))
+        new_reviews = set(third_reviews) - set(second_reviews)
+        self.assertEqual(len(new_reviews), 1)
+        self.assertIn(decisions[1], self.page(new_reviews.pop()))
+
+        broad_again = write_word(
+            self.root / "expanded.docx", heading_rule="Another unrelated heading note.",
+        )
+        self.import_revision(version, broad_again)
+        fourth_reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(history))
+        new_reviews = set(fourth_reviews) - set(third_reviews)
+        self.assertEqual(len(new_reviews), 1)
+        current = self.page(new_reviews.pop())
+        self.assertIn(decisions[0], current)
+        self.assertIn(NEW_RULE, current)
+        self.assertIn(TABLE_RULE, current)
+        self.assertIn("按原规则退回修改。", self.page(decisions[0]))

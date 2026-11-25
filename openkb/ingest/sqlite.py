@@ -564,14 +564,31 @@ class SqliteStore:
             }
         return review
 
-    def word_audit_reviews(self, decision_id: str | None = None) -> tuple[dict, ...]:
-        where, parameters = (" WHERE review.decision_id = ?", (decision_id,)) if decision_id else ("", ())
+    def word_audit_reviews(
+        self, decision_id: str | None = None, *, before_version: str | None = None,
+    ) -> tuple[dict, ...]:
+        conditions = []
+        parameters = []
+        if decision_id is not None:
+            conditions.append("review.decision_id = ?")
+            parameters.append(decision_id)
+        if before_version is not None:
+            conditions.append("""EXISTS (
+                SELECT 1 FROM source_versions AS incoming
+                WHERE incoming.id = ? AND incoming.document_id = source.document_id
+                  AND source.rowid < incoming.rowid
+            )""")
+            parameters.append(before_version)
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        order = "source.rowid" if before_version is not None else "review.rowid"
         with closing(self._connect()) as conn:
             rows = conn.execute(
                 """SELECT review.snapshot_json, confirmation.choice, confirmation.resulting_choice,
                           confirmation.reason, confirmation.created_at
-                   FROM word_audit_reviews AS review LEFT JOIN word_audit_review_confirmations AS confirmation
-                     ON confirmation.review_id = review.id""" + where + " ORDER BY review.rowid DESC",
+                   FROM word_audit_reviews AS review
+                   JOIN source_versions AS source ON source.id = review.version_id
+                   LEFT JOIN word_audit_review_confirmations AS confirmation
+                     ON confirmation.review_id = review.id""" + where + f" ORDER BY {order} DESC",
                 parameters,
             )
             return tuple(self._word_audit_review_snapshot(row) for row in rows)
