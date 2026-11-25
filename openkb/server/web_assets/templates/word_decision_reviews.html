@@ -6,7 +6,7 @@
   {% for review, decision in entries %}
   <li>
     <a href="/word-audit-reviews/{{ review.id }}">{{ decision.audit.goal }}</a>
-    <small>{{ "待人工确认" if review.state == "pending" else "已人工确认" }}</small>
+    <small>{{ labels[review.state] }}</small>
   </li>
   {% endfor %}
 </ul>

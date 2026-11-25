@@ -2,12 +2,20 @@
 {% block content %}
 <h1>人工决定复核</h1>
 <section class="panel" aria-labelledby="decision-review-title">
-  <h2 id="decision-review-title">{{ "待人工确认" if review.state == "pending" else "已人工确认" }}</h2>
+  <h2 id="decision-review-title">{{ labels[review.state] }}</h2>
   <p><strong>新版资料</strong> · {{ version.original_name }} · <code>{{ version.id }}</code></p>
   <p><strong>原审阅目标</strong> · {{ decision.audit.goal }}</p>
   <p><strong>原人工决定</strong> · {{ "放行" if decision.choice == "release" else "退回修改" }}</p>
   <p><strong>原决定理由</strong> · {{ decision.reason }}</p>
   <a href="/word-audit-decisions/{{ decision.id }}">查看原决定及证据</a>
+  {% if review.state == "unchanged" %}
+  <p>原结论未变，原决定继续有效。</p>
+  {% elif review.state == "failed" %}
+  <p>暂时无法完成复核，原决定及依据仍可查。可重试复核。</p>
+  <form action="/word-audit-reviews/{{ review.id }}/retry" method="post">
+    <button type="submit">重试复核</button>
+  </form>
+  {% endif %}
 </section>
 <section class="panel" aria-labelledby="decision-impact-title">
   <h2 id="decision-impact-title">从变更原文查看影响</h2>
@@ -25,14 +33,24 @@
       </section>
       <section>
         <h4>新版依据</h4>
-        {% if item.new_evidence %}
+        {% if item.new_alternatives %}
+        <p>新版依据相互冲突。</p>
+        {% for alternative in item.new_alternatives %}
+        <p>{{ alternative.check }}</p>
+        {% for proof in alternative.evidence %}
+        <blockquote>{{ proof.quote }}</blockquote>
+        <p>{{ positions[proof.id] }} · <code>{{ proof.version_id }}</code></p>
+        <a href="/evidence/{{ proof.id }}">打开新版原文与原件</a>
+        {% endfor %}
+        {% endfor %}
+        {% elif item.new_evidence %}
         {% set proof = item.new_evidence %}
         <p>{{ item.new_check }}</p>
         <blockquote>{{ proof.quote }}</blockquote>
         <p>{{ positions[proof.id] }} · <code>{{ proof.version_id }}</code></p>
         <a href="/evidence/{{ proof.id }}">打开新版原文与原件</a>
         {% else %}
-        <p>无法确认新版中对应的依据，需核对新版原文。</p>
+        <p>{{ "新版缺少支撑原结论的依据。" if item.basis == "missing" else "无法确认新版中对应的依据，需核对新版原文。" }}</p>
         {% endif %}
       </section>
     </div>

@@ -1,6 +1,7 @@
 import re
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
+from unittest.mock import patch
 
 from review_fixtures import TABLE_RULE, paragraph, write_docx, write_word
 from web_fixtures import BrowserCase
@@ -84,3 +85,66 @@ class WordAuditReviewWebTests(BrowserCase):
         after = self.page("/")
         self.assertEqual(len(set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', after))), 1)
         self.assertIn("待人工确认", self.page(reviews[1]))
+
+
+    def test_equivalent_wording_records_review_without_waiting_for_human(self):
+        version, decisions = self.recorded_decisions()
+        revision = write_word(self.root / "clarification.docx", ("Repeat the header row for each table.",))
+        self.import_revision(version, revision)
+        self.assertNotIn("待人工确认", self.page("/"))
+        inbox = self.page("/word-audit-reviews")
+        reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', inbox)
+        self.assertEqual(len(reviews), 2)
+        self.assertEqual(inbox.count("已复核"), 2)
+        for review in reviews:
+            html = self.page(review)
+            self.assertIn("原决定继续有效", html)
+            self.assertIn("Repeat the header row for each table.", html)
+            self.assertNotIn("保存人工确认", html)
+        self.assertIn("按原规则退回修改。", self.page(decisions[0]))
+
+    def test_unrelated_edit_creates_no_review(self):
+        version, _ = self.recorded_decisions()
+        revision = write_word(self.root / "other-section.docx", heading_rule="Another headings description.")
+        self.import_revision(version, revision)
+        self.assertIn("暂无决定复核", self.page("/word-audit-reviews"))
+
+    def test_missing_basis_and_conflict_are_pending_with_truthful_links(self):
+        version, _ = self.recorded_decisions()
+        missing = write_word(self.root / "missing.docx", ("Table captions are descriptive.",))
+        self.import_revision(version, missing)
+        inbox = self.page("/word-audit-reviews")
+        reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', inbox)
+        self.assertEqual(len(reviews), 2)
+        for review in reviews:
+            html = self.page(review)
+            self.assertIn("新版缺少支撑原结论的依据", html)
+            self.assertNotIn('打开新版原文与原件', html)
+
+        conflict = write_word(self.root / "conflict.docx", (TABLE_RULE, NEW_RULE))
+        self.import_revision(version, conflict)
+        self.import_revision(version, conflict)
+        inbox = self.page("/word-audit-reviews")
+        reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', inbox)
+        self.assertEqual(len(reviews), 4)
+        conflict_page = self.page(reviews[0])
+        self.assertIn("新版依据相互冲突", conflict_page)
+        evidence = re.findall(r'href="(/evidence/[a-f0-9]+)"', conflict_page)
+        self.assertEqual(len(set(evidence)), 3)
+        self.assertTrue(any(NEW_RULE in self.page(link) for link in evidence))
+        self.assertTrue(any(TABLE_RULE in self.page(link) for link in evidence))
+
+    def test_failed_review_is_readable_and_retryable_without_a_second_item(self):
+        version, decisions = self.recorded_decisions()
+        revision = write_word(self.root / "retry.docx", (NEW_RULE,))
+        with patch("openkb.server.word_audit_reviews.trace_blocks", side_effect=OSError):
+            self.import_revision(version, revision)
+            self.assertIn("复核失败", self.page("/"))
+        inbox = self.page("/word-audit-reviews")
+        reviews = re.findall(r'href="(/word-audit-reviews/[^"]+)"', inbox)
+        self.assertEqual(len(reviews), 2)
+        self.assertIn("重试复核", self.page(reviews[0]))
+        self.assertIn("按原规则退回修改。", self.page(decisions[0]))
+        with self.post_form(reviews[0] + "/retry", {}) as response:
+            self.assertIn("待人工确认", response.read().decode("utf-8"))
+        self.assertEqual(self.page("/word-audit-reviews").count('href="/word-audit-reviews/'), 2)

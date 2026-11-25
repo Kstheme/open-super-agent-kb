@@ -521,6 +521,18 @@ class SqliteStore:
                      for review in reviews),
                 )
 
+    def retry_word_audit_review(self, review_id: str, review: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            previous = self._word_audit_review(conn, review_id)
+            if previous["state"] != "failed":
+                raise ValueError("此复核已恢复。")
+            conn.execute(
+                "UPDATE word_audit_reviews SET snapshot_json = ? WHERE id = ?",
+                (json.dumps(review, ensure_ascii=False), review_id),
+            )
+
+
     def word_audit_review(self, review_id: str) -> dict:
         with closing(self._connect()) as conn:
             return self._word_audit_review(conn, review_id)

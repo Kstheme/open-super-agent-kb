@@ -14,6 +14,15 @@
       {% endfor %}
     </ul>
     {% endif %}
+    {% set failed = word_reviews | selectattr("state", "equalto", "failed") | list %}
+    {% if failed %}
+    <p>复核失败 · {{ failed | length }} 项</p>
+    <ul>
+      {% for review in failed %}
+      <li><a href="/word-audit-reviews/{{ review.id }}">查看失败原因与重试</a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
     <a href="/word-audit-reviews">查看全部决定复核</a>
   </section>
   {% endif %}
