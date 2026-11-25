@@ -453,6 +453,16 @@ class SqliteStore:
                 raise ValueError("审阅建议已更新，请核对后再保存决定。")
             if not audit["covered"]:
                 raise ValueError("当前审阅暂无有依据的建议。")
+            versions = {
+                proof["version_id"] for item in audit["covered"] for proof in item["evidence"]
+            }
+            if any(conn.execute(
+                """SELECT 1 FROM source_versions AS cited JOIN source_versions AS current
+                     ON current.document_id = cited.document_id AND current.rowid > cited.rowid
+                   WHERE cited.id = ? LIMIT 1""",
+                (version_id,),
+            ).fetchone() for version_id in versions):
+                raise ValueError("引用的资料已有新版。请在工作区基于最新资料重新提交审阅，再保存决定。")
             conn.execute(
                 """INSERT INTO word_audit_decisions (id, audit_id, choice, reason, audit_snapshot_json)
                    VALUES (?, ?, ?, ?, ?)""",
@@ -462,7 +472,10 @@ class SqliteStore:
 
     def word_audit_decision(self, decision_id: str) -> dict:
         with closing(self._connect()) as conn:
-            return self._word_audit_decision(conn, decision_id)
+            decision = self._word_audit_decision(conn, decision_id)
+            confirmation = self._latest_word_audit_confirmation(conn, decision_id)
+            decision["effective_choice"] = confirmation[0] if confirmation else decision["choice"]
+            return decision
 
     def _word_audit_decision(self, conn: sqlite3.Connection, decision_id: str) -> dict:
         row = conn.execute(
@@ -598,6 +611,19 @@ class SqliteStore:
             )
             return tuple(self._word_audit_review_snapshot(row) for row in rows)
 
+    @staticmethod
+    def _latest_word_audit_confirmation(
+        conn: sqlite3.Connection, decision_id: str,
+    ) -> tuple | None:
+        return conn.execute(
+            """SELECT confirmation.resulting_choice, source.rowid
+               FROM word_audit_review_confirmations AS confirmation
+               JOIN word_audit_reviews AS review ON review.id = confirmation.review_id
+               JOIN source_versions AS source ON source.id = review.version_id
+               WHERE review.decision_id = ? ORDER BY source.rowid DESC LIMIT 1""",
+            (decision_id,),
+        ).fetchone()
+
     def confirm_word_audit_review(self, review_id: str, choice: str, reason: str,
                                   adjusted_choice: str = "") -> None:
         if choice not in {"keep", "adjust"} or (choice == "adjust" and adjusted_choice not in {"release", "return"}):
@@ -611,7 +637,17 @@ class SqliteStore:
             if review["state"] != "pending":
                 raise ValueError("这项复核已处理或暂不可确认。")
             decision = self._word_audit_decision(conn, review["decision_id"])
-            resulting_choice = adjusted_choice if choice == "adjust" else decision["choice"]
+            confirmation = self._latest_word_audit_confirmation(conn, decision["id"])
+            if confirmation is not None:
+                (current_choice, latest_version_order) = confirmation
+                (version_order,) = conn.execute(
+                    "SELECT rowid FROM source_versions WHERE id = ?", (review["version_id"],),
+                ).fetchone()
+                if version_order < latest_version_order:
+                    raise ValueError("更新的复核已确认。请查看当前决定。")
+            else:
+                current_choice = decision["choice"]
+            resulting_choice = adjusted_choice if choice == "adjust" else current_choice
             conn.execute(
                 """INSERT INTO word_audit_review_confirmations
                    (review_id, choice, resulting_choice, reason) VALUES (?, ?, ?, ?)""",

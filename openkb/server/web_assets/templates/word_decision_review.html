@@ -7,6 +7,9 @@
   <p><strong>新版资料</strong> · {{ version.original_name }} · <code>{{ version.id }}</code></p>
   <p><strong>原审阅目标</strong> · {{ decision.audit.goal }}</p>
   <p><strong>原人工决定</strong> · {{ "放行" if decision.choice == "release" else "退回修改" }}</p>
+  {% if decision.effective_choice != decision.choice %}
+  <p><strong>当前人工决定</strong> · {{ "放行" if decision.effective_choice == "release" else "退回修改" }}</p>
+  {% endif %}
   <p><strong>原决定理由</strong> · {{ decision.reason }}</p>
   <a href="/word-audit-decisions/{{ decision.id }}">查看原决定及证据</a>
   {% if review.state == "unchanged" %}

@@ -2,6 +2,9 @@
   {% if decision %}
   <h2 id="word-audit-decision" tabindex="-1">人工决定</h2>
   <p><strong>人工选择</strong> · {{ "放行" if decision.choice == "release" else "退回修改" }}</p>
+  {% if decision.effective_choice != decision.choice %}
+  <p><strong>当前人工决定</strong> · {{ "放行" if decision.effective_choice == "release" else "退回修改" }}</p>
+  {% endif %}
   <p><strong>决定理由</strong> · {{ decision.reason }}</p>
   <p><strong>记录时间（UTC）</strong> · {{ decision.created_at }}</p>
   <a href="/word-audit-decisions">返回审阅决定历史</a>

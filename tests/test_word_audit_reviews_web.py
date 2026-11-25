@@ -184,3 +184,87 @@ class WordAuditReviewWebTests(BrowserCase):
         self.assertIn(NEW_RULE, current)
         self.assertIn(TABLE_RULE, current)
         self.assertIn("按原规则退回修改。", self.page(decisions[0]))
+
+
+    def test_keep_uses_latest_human_result_and_older_review_cannot_override_newer_confirmation(self):
+        version, decisions = self.recorded_decisions()
+        seen = set()
+        def import_and_get(rule, heading):
+            revision = write_word(self.root / f"revision-{heading}.docx", (rule,), heading_rule=heading)
+            self.import_revision(version, revision)
+            recent = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page("/word-audit-reviews")))
+            new = recent - seen
+            seen.update(new)
+            return next(link for link in new if decisions[0] in self.page(link))
+
+        narrowed = import_and_get(NEW_RULE, "Heading 2")
+        with self.post_form(narrowed + "/confirm", {
+            "choice": "adjust", "adjusted_choice": "release", "reason": "人工改为放行。",
+        }):
+            pass
+        broadened = import_and_get(TABLE_RULE, "Heading 3")
+        with self.post_form(broadened + "/confirm", {
+            "choice": "keep", "reason": "保留当前放行。",
+        }) as response:
+            self.assertIn("保留原决定</strong> · 放行", response.read().decode("utf-8"))
+        decision = self.page(decisions[0])
+        self.assertIn("当前人工决定</strong> · 放行", decision)
+        self.assertIn("按原规则退回修改。", decision)
+
+        older = import_and_get(NEW_RULE, "Heading 4")
+        newer = import_and_get("Table captions should be informative.", "Heading 5")
+        with self.post_form(newer + "/confirm", {"choice": "keep", "reason": "继续放行。"}):
+            pass
+        with self.assertRaises(HTTPError) as stale:
+            self.post_form(older + "/confirm", {
+                "choice": "adjust", "adjusted_choice": "return", "reason": "过期确认。",
+            })
+        with stale.exception as failure:
+            self.assertEqual(failure.code, 409)
+            self.assertIn("更新的复核已确认", failure.read().decode("utf-8"))
+        self.assertIn("当前人工决定</strong> · 放行", self.page(decisions[0]))
+
+    def test_first_decision_requires_a_current_cited_document(self):
+        policy = write_docx(self.root / "508-applicability-checklist.docx", paragraph("☐" + SCOPE))
+        source = write_word(self.root / "508-word-checklist.docx")
+        self.upload(policy.name, policy.read_bytes())
+        imported = self.upload(source.name, source.read_bytes())
+        version = re.search(r'data-version-id="([^"]+)"', imported)[1]
+        with self.post_form("/word-audits", {"goal": "核对 Word 表头要求"}) as response:
+            audit = urlsplit(response.url).path
+        form = self.page(audit)
+        token = re.search(r'name="answer_snapshot" value="([^"]+)"', form)[1]
+        revision = write_word(self.root / "before-decision.docx", (NEW_RULE,))
+        self.import_revision(version, revision)
+        with self.assertRaises(HTTPError) as stale:
+            self.post_form(audit + "/decisions", {
+                "choice": "return", "reason": "根据已过期的原规则。", "answer_snapshot": token,
+            })
+        with stale.exception as failure:
+            self.assertEqual(failure.code, 400)
+            self.assertIn("引用的资料已有新版", failure.read().decode("utf-8"))
+        self.assertNotIn("根据已过期的原规则。", self.page("/word-audit-decisions"))
+
+    def test_acknowledged_missing_basis_does_not_reopen_on_unrelated_edit(self):
+        version, decisions = self.recorded_decisions()
+        removed = write_word(self.root / "basis-removed.docx", ("Table captions are descriptive.",))
+        self.import_revision(version, removed)
+        inbox = "/word-audit-reviews"
+        second = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(inbox)))
+        acknowledged = next(link for link in second if decisions[0] in self.page(link))
+        with self.post_form(acknowledged + "/confirm", {"choice": "keep", "reason": "已知依据缺失。"}):
+            pass
+        notes = write_word(
+            self.root / "still-removed.docx", ("Table captions are descriptive.",), heading_rule="Unrelated notes.",
+        )
+        self.import_revision(version, notes)
+        third = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(inbox)))
+        new = third - second
+        self.assertEqual(len(new), 1)
+        self.assertIn(decisions[1], self.page(new.pop()))
+        restored = write_word(self.root / "restored.docx", heading_rule="New notes on headings.")
+        self.import_revision(version, restored)
+        fourth = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(inbox)))
+        new = fourth - third
+        self.assertEqual(len(new), 1)
+        self.assertIn(decisions[0], self.page(new.pop()))

@@ -20,14 +20,16 @@ REVIEW_STATE_LABELS = {
 }
 
 
-def _effective_proof(item: dict, proof: dict, acknowledged: dict) -> tuple[str, str, dict]:
+def _effective_proof(item: dict, proof: dict, acknowledged: dict) -> tuple[str, str, dict, dict | None]:
     claim_id = item["claim_id"]
     check = item["check"]
     while (reviewed := acknowledged.get((item["slot_id"], proof["id"]))) is not None:
+        if reviewed["new_evidence"] is None:
+            return claim_id, check, proof, reviewed
         proof = reviewed["new_evidence"]
         check = reviewed["new_check"]
         claim_id = reviewed.get("new_claim_id") or claim_id
-    return claim_id, check, proof
+    return claim_id, check, proof, None
 
 
 def _review_for_decision(
@@ -45,19 +47,19 @@ def _review_for_decision(
         for prior in reversed(earlier_reviews)
         if prior["state"] in {"confirmed", "unchanged"}
         for item in prior["items"]
-        if item["new_evidence"] is not None
+        if item["new_evidence"] is not None or item.get("basis") in {"missing", "conflict"}
     }
     try:
         for item in decision["audit"]["covered"]:
             for proof in item["evidence"]:
                 if proof["document_id"] != after.document_id or proof["version_id"] == after.id:
                     continue
-                claim_id, check, proof = _effective_proof(item, proof, acknowledged)
+                claim_id, check, proof, observed = _effective_proof(item, proof, acknowledged)
                 traces, _warnings = trace_blocks(align(proof["version_id"]), (proof["block_id"],))
                 trace = traces[proof["block_id"]]
                 alternatives = coverages(item["slot_id"])
                 checks = {alternative.check for alternative in alternatives}
-                if trace.status == "unchanged" and len(checks) <= 1:
+                if observed is None and trace.status == "unchanged" and len(checks) <= 1:
                     continue
                 if len(checks) > 1:
                     basis = "conflict"
@@ -66,7 +68,11 @@ def _review_for_decision(
                 elif not alternatives:
                     basis = "missing"
                 else:
-                    basis = "unchanged" if check in checks else "material"
+                    basis = "unchanged" if observed is None and check in checks else "material"
+                if observed is not None and observed["basis"] == basis:
+                    previous_checks = {item["check"] for item in observed["new_alternatives"]}
+                    if basis == "missing" or checks == previous_checks:
+                        continue
                 candidate = alternatives[0] if basis in {"unchanged", "material"} else None
                 review["items"].append({
                     "slot_id": item["slot_id"],
