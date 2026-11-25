@@ -1,43 +1,74 @@
 {% extends "base.html" %}
+{% macro trace(item) %}
+<details data-claim-id="{{ item.claim_id }}">
+  <summary>查看声明与原文证据</summary>
+  <p><strong>声明</strong> · {{ item.check }}</p>
+  {% for evidence in item.evidence %}
+  <section class="evidence-detail">
+    <strong>证据</strong>
+    <blockquote>{{ evidence.quote }}</blockquote>
+    <dl>
+      <dt>原文块</dt>
+      <dd>{{ positions[evidence.id] }}</dd>
+      <dt>资料版本</dt>
+      <dd>{{ evidence.original_name }} · <code>{{ evidence.version_id }}</code></dd>
+    </dl>
+    <a href="/evidence/{{ evidence.id }}">打开原文与原件</a>
+  </section>
+  {% endfor %}
+</details>
+{% endmacro %}
 {% block content %}
 <h1>Word 交付审阅</h1>
 <section class="panel" aria-labelledby="word-audit-answer">
   <h2 id="word-audit-answer">审阅建议</h2>
-  <p><strong>委托目标</strong> · {{ audit.goal }}</p>
+  <p><strong>委托目标（用户提供）</strong> · {{ audit.goal }}</p>
+  {% if audit.deliverable %}
+  <section aria-label="待审 Word">
+    <h3>已核验 · {{ audit.deliverable.original_name }}</h3>
+    <p>待审文件 SHA-256 <code>{{ audit.deliverable.content_hash }}</code></p>
+    {% for repeats in audit.deliverable.table_headers %}
+    <p>第 {{ loop.index }} 张正文表格：首行{{ "已设置" if repeats else "未设置" }}重复表头。</p>
+    {% else %}
+    <p>未找到可直接核验的正文表格。</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+  <p>待核对 · 表格是否跨页需按交付件实际版式确认。</p>
   {% if audit.gaps %}
-  <p role="status">部分要求依据不足，现有建议只适用于有原文支持的条目。</p>
+  <p role="status">部分要求仍待核对，现有建议只适用于有原文支持的条目。</p>
   {% else %}
   <p role="status">已查证适用范围和表头要求。</p>
   {% endif %}
+  {% for note in audit.source_notes %}<p>{{ note }}</p>{% endfor %}
   <ul>
     {% for item in audit.covered %}
     <li data-slot-id="{{ item.slot_id }}">
       <h3>{{ slots[item.slot_id] }}</h3>
       <p>{{ item.check }}</p>
       {% if item.slot_id == "data_tables" %}
+      {% if item.check == "有数据表格时，表头行应设置为重复。" %}
       <p>单页和跨页数据表格均适用。未设置重复表头的表格需要补设。</p>
+      {% else %}
+      <p>{{ item.method }}</p>
       {% endif %}
-      <details data-claim-id="{{ item.claim_id }}">
-        <summary>查看声明与原文证据</summary>
-        <p><strong>声明</strong> · {{ item.check }}</p>
-        {% for evidence in item.evidence %}
-        <section class="evidence-detail">
-          <strong>证据</strong>
-          <blockquote>{{ evidence.quote }}</blockquote>
-          <dl>
-            <dt>原文块</dt>
-            <dd>{{ positions[evidence.id] }}</dd>
-            <dt>资料版本</dt>
-            <dd>{{ evidence.original_name }} · <code>{{ evidence.version_id }}</code></dd>
-          </dl>
-          <a href="/evidence/{{ evidence.id }}">打开原文与原件</a>
-        </section>
-        {% endfor %}
-      </details>
+      {% endif %}
+      {{ trace(item) }}
+    </li>
+    {% endfor %}
+    {% for conflict in audit.evidence_conflicts %}
+    <li data-slot-id="{{ conflict.slot_id }}">
+      <h3>{{ slots[conflict.slot_id] }} · 证据冲突 · 待核对</h3>
+      {% for item in conflict.alternatives %}
+      <p>{{ item.check }}</p>
+      {{ trace(item) }}
+      {% endfor %}
     </li>
     {% endfor %}
     {% for gap in audit.gaps %}
+    {% if gap.id not in audit.evidence_conflicts | default([]) | map(attribute="slot_id") | list %}
     <li data-slot-id="{{ gap.id }}"><h3>{{ gap.title }} · 依据不足</h3></li>
+    {% endif %}
     {% endfor %}
   </ul>
 </section>

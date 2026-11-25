@@ -7,9 +7,11 @@
     <p>核对非网页 Word 的适用范围和数据表格重复表头要求。</p>
     {% if error %}<p role="alert">{{ error }}</p>{% endif %}
     {% if versions %}
-    <form method="post" action="/word-audits" class="review-form">
+    <form method="post" action="/word-audits" class="review-form" enctype="multipart/form-data">
       <label for="word-audit-goal">审阅目标</label>
       <textarea id="word-audit-goal" name="goal" rows="3" required>{{ goal }}</textarea>
+      <label for="word-audit-deliverable">待审 Word（可选）</label>
+      <input id="word-audit-deliverable" type="file" name="deliverable" accept=".docx">
       <details>
         <summary>指定资料版本（可选）</summary>
         <fieldset class="source-picker">

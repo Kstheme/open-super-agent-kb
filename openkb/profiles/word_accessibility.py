@@ -128,6 +128,29 @@ def supports_audit_slot(source: Version | VersionSummary, slot_id: str) -> bool:
     )
 
 
+def _coverage_for_rule(
+    slot: Slot, version: Version, rule: Rule, ledger: Ledger, claims: ClaimStore,
+) -> Coverage | None:
+    evidence = _source_evidence(version, rule)
+    if not evidence:
+        return None
+    candidate = compliance_claim(version.id, rule.check, evidence)
+    claim = next(
+        (claim for claim in claims.claims(version.id)
+         if claim.profile == candidate.profile
+         and claim.text.strip() in (rule.check, rule.equivalent_claim)
+         and _same_basis(claim.evidence, evidence, version, rule)),
+        None,
+    )
+    if claim is None:
+        claims.save_claims((candidate,))
+        claim = candidate
+    return Coverage(
+        slot.id, claim.id, rule.check, rule.method,
+        tuple(ledger.locate_evidence(proof.id) for proof in claim.evidence),
+    )
+
+
 def find_coverage(
     slot: Slot,
     sources: tuple[Version, ...],
@@ -136,26 +159,43 @@ def find_coverage(
     *,
     match_source: Callable[[Version, str], bool] = supports_slot,
 ) -> Coverage | None:
-    rule = RULES[slot.id]
     for version in sources:
-        if not match_source(version, slot.id):
-            continue
-        evidence = _source_evidence(version, rule)
-        if not evidence:
-            continue
-        candidate = compliance_claim(version.id, rule.check, evidence)
-        claim = next(
-            (claim for claim in claims.claims(version.id)
-             if claim.profile == candidate.profile
-             and claim.text.strip() in (rule.check, rule.equivalent_claim)
-             and _same_basis(claim.evidence, evidence, version, rule)),
-            None,
-        )
-        if claim is None:
-            claims.save_claims((candidate,))
-            claim = candidate
-        return Coverage(
-            slot.id, claim.id, rule.check, rule.method,
-            tuple(ledger.locate_evidence(proof.id) for proof in claim.evidence),
-        )
+        if match_source(version, slot.id):
+            coverage = _coverage_for_rule(slot, version, RULES[slot.id], ledger, claims)
+            if coverage is not None:
+                return coverage
     return None
+
+
+def audit_coverages(
+    slot: Slot,
+    sources: tuple[Version, ...],
+    ledger: Ledger,
+    claims: ClaimStore,
+    *,
+    eligible: Callable[[Version, str], bool] = supports_audit_slot,
+) -> tuple[Coverage, ...]:
+    """Retain proofs for the supported rule interpretations in the selected versions."""
+    rule = RULES[slot.id]
+    rules = (rule,)
+    if slot.id == "data_tables":
+        rules += (
+            Rule(rule.source, rule.section, ("Data tables must repeat their header rows.",),
+                 rule.check, rule.method),
+            Rule(rule.source, rule.section, ("Repeat the header row for each table.",),
+                 rule.check, rule.method),
+            Rule(rule.source, rule.section,
+                 ("Only data tables that span multiple pages must repeat their header row.",),
+                 "只有跨页数据表格要求重复表头。",
+                 "单页数据表格不适用这条要求。未设置重复表头的跨页表格需要补设。"),
+        )
+
+    found = []
+    for version in sources:
+        if not version.original_name.casefold().endswith(".docx") or not eligible(version, slot.id):
+            continue
+        for candidate in rules:
+            coverage = _coverage_for_rule(slot, version, candidate, ledger, claims)
+            if coverage is not None:
+                found.append(coverage)
+    return tuple(found)

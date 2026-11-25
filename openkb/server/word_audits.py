@@ -1,11 +1,16 @@
 """Browser entry and evidence view for Word audit requests."""
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from hashlib import sha256
+from pathlib import Path
+
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from openkb.ingest.docx import inspect_table_headers
 from openkb.ingest.model import Locator
 from openkb.ingest.sqlite import SqliteStore, open_delivery_store
 
+from .documents import save_upload
 from .evidence_view import evidence_position
 from .web import render
 from .word_audit import audit_sources, run_word_audit
@@ -23,13 +28,30 @@ def workspace(request: Request, *, goal: str = "", error: str | None = None) -> 
     )
 
 
+def inspect_deliverable(path: Path) -> dict:
+    original = path.read_bytes()
+    return {
+        "original_name": path.name,
+        "content_hash": sha256(original).hexdigest(),
+        "table_headers": inspect_table_headers(original),
+    }
+
+
 @router.post("/word-audits")
 def start_word_audit(
     request: Request, goal: str = Form(""), source: list[str] | None = Form(None),
+    deliverable: UploadFile | None = File(None),
 ):
     try:
+        if not goal.strip():
+            raise ValueError("请输入审阅目标。")
         with open_delivery_store(request.app.state.settings.database) as store:
-            audit = run_word_audit(store, goal, source or ())
+            inspected = None
+            if deliverable is not None and deliverable.filename:
+                if Path(deliverable.filename).suffix.casefold() != ".docx":
+                    raise ValueError("请上传 DOCX 交付件。")
+                inspected = save_upload(deliverable, inspect_deliverable)
+            audit = run_word_audit(store, goal, source or (), deliverable=inspected)
     except KeyError:
         return workspace(request, goal=goal, error="所选资料版本已不存在，请重新选择。")
     except ValueError as error:
@@ -51,9 +73,12 @@ def word_audit(request: Request, audit_id: str):
 def render_word_audit(
     request: Request, audit: dict, *, decision: dict | None = None, decision_error: str | None = None,
 ) -> HTMLResponse:
+    alternatives = [
+        item for conflict in audit.get("evidence_conflicts", ()) for item in conflict["alternatives"]
+    ]
     positions = {
         proof["id"]: evidence_position(Locator(**proof["locator"]), proof["block_id"])
-        for item in audit["covered"]
+        for item in (*audit["covered"], *alternatives)
         for proof in item["evidence"]
     }
     return render(
