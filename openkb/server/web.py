@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from starlette.routing import NoMatchFound
 
 from .runtime import AppSettings
 
@@ -18,19 +19,25 @@ _TEMPLATES = Environment(
 )
 _LOOPBACK_HOST = re.compile(r"(?:127\.0\.0\.1|localhost|\[::1\])(?::[0-9]+)?", re.IGNORECASE)
 _NAVIGATION = (
-    ("/", "工作区"),
-    ("/documents", "资料"),
-    ("/checklists", "清单"),
-    ("/reviews", "复核"),
-    ("/status", "连接状态"),
+    ("workspace", "工作区"),
+    ("documents", "资料"),
+    ("checklists", "清单"),
+    ("reviews", "复核"),
+    ("status", "连接状态"),
 )
 
 
 def render(request: Request, template: str, *, status_code: int = 200, **context) -> HTMLResponse:
-    routes = {getattr(route, "path", None) for route in request.app.routes}
+    navigation = []
+    for name, label in _NAVIGATION:
+        try:
+            path = request.app.url_path_for(name)
+        except NoMatchFound:
+            continue
+        navigation.append((str(path), label))
     html = _TEMPLATES.get_template(template).render(
         request=request,
-        navigation=[(path, label) for path, label in _NAVIGATION if path in routes],
+        navigation=navigation,
         **context,
     )
     return HTMLResponse(html, status_code=status_code)

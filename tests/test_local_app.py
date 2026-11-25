@@ -11,7 +11,12 @@ from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from fastapi import APIRouter
+from fastapi import Request as ASGIRequest
+
 from openkb.server.cli import main
+from openkb.server.runtime import AppSettings
+from openkb.server.web import create_app, render
 
 
 class LocalAppTests(unittest.TestCase):
@@ -94,6 +99,18 @@ class LocalAppTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as caught:
                 urlopen(request, timeout=3)
             self.assertEqual(caught.exception.code, status)
+
+    def test_navigation_includes_registered_workspace_routers(self):
+        app = create_app(AppSettings.from_paths(self.data))
+        router = APIRouter()
+        router.add_api_route("/documents", lambda: {}, name="documents")
+        app.include_router(router)
+        request = ASGIRequest({"type": "http", "path": "/", "headers": [], "app": app})
+
+        response = render(request, "workspace.html", title="工作区")
+        html = response.body.decode("utf-8")
+        self.assertIn('href="/documents"', html)
+        self.assertNotIn('href="/reviews"', html)
 
     @staticmethod
     def stop(process):
