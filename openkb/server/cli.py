@@ -14,7 +14,7 @@ from openkb.eval.regenerate import REGENERATE_NOTE, RegenerateReviewSystem
 from openkb.eval.runner import run_goldset
 from openkb.eval.thresholds import load_thresholds
 
-from . import claims_cli, deliver_cli, ingest_cli, review_cli
+from . import claims_cli, deliver_cli, ingest_cli, local_cli, review_cli
 
 
 def _write_report(path: Path, content: str) -> None:
@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     started = perf_counter()
     parser = argparse.ArgumentParser(prog="openkb")
     commands = parser.add_subparsers(dest="command", required=True)
+    local = local_cli.configure(commands)
     ingest = ingest_cli.configure(commands)
     claims = claims_cli.configure(commands)
     deliver = deliver_cli.configure(commands)
@@ -53,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
     compare.add_argument("--report-b", type=Path, required=True)
     args = parser.parse_args(argv)
 
+    if args.command in local:
+        return local_cli.run(args, local[args.command])
     if args.command == "ingest":
         return ingest_cli.run(args, ingest)
 
