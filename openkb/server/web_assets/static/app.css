@@ -65,3 +65,28 @@ p { margin-block: .4rem 1rem; }
   .wrap { width: min(100% - 2rem, 68rem); }
   .workspace-grid { grid-template-columns: 1fr; }
 }
+.checklist-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; gap: 1rem; }
+.source-picker { display: grid; gap: .45rem; margin: 0 0 1rem; padding: .65rem; border: 1px solid var(--border); border-radius: .45rem; }
+.source-picker legend { padding-inline: .25rem; font-weight: 700; }
+.source-option { display: flex; align-items: flex-start; gap: .65rem; padding: .5rem .6rem; border-radius: .35rem; cursor: pointer; }
+.source-option:hover, .source-option:focus-within { background: #e7eef5; }
+.source-option input { margin: .4rem 0 0; accent-color: var(--primary); }
+.source-option code, .delivery-list code { color: var(--muted); }
+.delivery-list, .checklist-items, .evidence-links { list-style: none; margin: 0; padding: 0; }
+.delivery-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .65rem; padding-block: .65rem; border-bottom: 1px solid var(--border); }
+.delivery-list li:last-child { border-bottom: 0; }
+.delivery-list code { flex-basis: 100%; }
+.checklist-header { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .8rem; }
+.revision-label { padding: .15rem .5rem; border-radius: .3rem; color: var(--accent); background: #e8f5ee; font-size: .875rem; font-weight: 650; }
+.checklist-history { display: flex; flex-wrap: wrap; gap: .3rem .85rem; margin-bottom: .8rem; }
+.checklist-history [aria-current=page] { font-weight: 750; }
+.checklist-items { display: grid; gap: .75rem; }
+.evidence-links { display: flex; flex-wrap: wrap; gap: .25rem .75rem; }
+.evidence-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .1rem .8rem; }
+.evidence-detail dt { color: var(--muted); }
+.evidence-detail dd { margin: 0; }
+.evidence-detail blockquote { margin: 1.25rem 0; padding: .7rem 1rem; border-inline-start: 3px solid var(--accent); background: var(--background); white-space: pre-wrap; }
+.panel .checklist-error { color: #a12732; }
+@media (max-width: 45rem) {
+  .checklist-layout { grid-template-columns: 1fr; }
+}

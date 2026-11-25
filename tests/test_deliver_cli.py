@@ -180,7 +180,7 @@ class DeliverCliTests(unittest.TestCase):
 
         with (
             patch("openkb.core.delivery.monotonic", side_effect=lambda: clock),
-            patch("openkb.server.deliver_cli.find_coverage", side_effect=slow_last_lookup),
+            patch("openkb.server.delivery.find_coverage", side_effect=slow_last_lookup),
         ):
             report = self.command(
                 "deliver", "run", REQUEST, "--source", scope, "--source", word, "--max-steps", "4",

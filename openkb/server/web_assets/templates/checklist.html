@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/checklists">返回清单</a></p>
+<header class="checklist-header">
+  <h1>{{ artifact.title }}</h1>
+  <span class="revision-label">版本 {{ artifact.version }}</span>
+</header>
+{% if history|length > 1 %}
+<nav class="checklist-history" aria-label="清单历史版本">
+  {% for version in history %}
+  <a href="/checklists/{{ artifact.id }}?version={{ version }}"{% if artifact.version == version %} aria-current="page"{% endif %}>版本 {{ version }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+<ol class="checklist-items">
+  {% for item in artifact['items'] %}
+  <li class="panel" data-slot-id="{{ item.slot_id }}">
+    <h2>{{ item.title }}</h2>
+    <p>{{ item.check }}</p>
+    <p>{{ item.method }}</p>
+    <ul class="evidence-links" aria-label="原文证据">
+      {% for evidence in item.evidence %}
+      <li><a href="/evidence/{{ evidence.id }}">原文证据 · {{ evidence.original_name }}</a></li>
+      {% endfor %}
+    </ul>
+  </li>
+  {% endfor %}
+</ol>
+{% endblock %}

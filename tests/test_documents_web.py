@@ -1,62 +1,10 @@
-from pathlib import Path
 import re
-import socket
-from tempfile import TemporaryDirectory
-from threading import Thread
-from time import monotonic, sleep
-import unittest
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
-from uvicorn import Config, Server
-
-from openkb.server.runtime import AppSettings
-from openkb.server.web import create_app
+from web_fixtures import BrowserCase
 
 
-class DocumentsWebTests(unittest.TestCase):
-    def setUp(self):
-        workspace = TemporaryDirectory()
-        self.addCleanup(workspace.cleanup)
-        app = create_app(AppSettings.from_paths(Path(workspace.name)))
-        listener = socket.socket()
-        listener.bind(("127.0.0.1", 0))
-        self.addCleanup(listener.close)
-        self.address = f"http://127.0.0.1:{listener.getsockname()[1]}"
-        server = Server(Config(app, log_config=None, access_log=False))
-        worker = Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
-        worker.start()
-
-        def stop():
-            server.should_exit = True
-            worker.join(timeout=5)
-
-        self.addCleanup(stop)
-        deadline = monotonic() + 5
-        while not server.started and worker.is_alive() and monotonic() < deadline:
-            sleep(0.01)
-        self.assertTrue(server.started)
-
-    def page(self, path):
-        with urlopen(self.address + path, timeout=5) as response:
-            return response.read().decode("utf-8")
-
-    def upload(self, filename, content):
-        boundary = "OpenKBTestFormBoundary"
-        body = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="source"; filename="{filename}"\r\n'
-            'Content-Type: application/octet-stream\r\n\r\n'
-        ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
-        request = Request(
-            self.address + "/documents/import",
-            data=body,
-            headers={"Origin": self.address, "Content-Type": f"multipart/form-data; boundary={boundary}"},
-        )
-        with urlopen(request, timeout=5) as response:
-            self.assertIn("/documents?imported=", response.url)
-            return response.read().decode("utf-8")
-
+class DocumentsWebTests(BrowserCase):
     def test_import_preserves_the_original_name_and_separates_same_name_documents(self):
         empty = self.page("/documents")
         self.assertIn("暂无资料", empty)

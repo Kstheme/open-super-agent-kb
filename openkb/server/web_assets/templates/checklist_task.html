@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/checklists">返回清单</a></p>
+<h1>交付已暂停</h1>
+<section class="panel" aria-labelledby="gaps-title">
+  <h2 id="gaps-title">缺口</h2>
+  <ul>
+    {% for gap in task.gaps %}<li>{{ gap.title }}</li>{% endfor %}
+  </ul>
+  {% if task.conflicts %}
+  <h2>待解决冲突</h2>
+  <ul>{% for conflict in task.conflicts %}<li>{{ conflict.reason }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if task.pause_reason == 'step budget exhausted' %}
+  <p>已达处理步数上限。补充缺口所需的资料后，可以重新生成清单。</p>
+  {% elif task.pause_reason == 'wall clock budget exhausted' %}
+  <p>已达处理时间上限。请重新生成清单。</p>
+  {% endif %}
+</section>
+{% endblock %}

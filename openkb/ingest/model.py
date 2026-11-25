@@ -86,3 +86,11 @@ class LocatedEvidence(Evidence):
     original_name: str
     content_hash: str
     locator: Locator
+
+
+@dataclass(frozen=True)
+class DeliverySummary:
+    id: str
+    title: str | None
+    state: str
+    version: int | None

@@ -9,7 +9,7 @@ from openkb.core.delivery import DeliveryConflict
 
 from .claims import Claim, compliance_claim
 from .ledger import StoreError
-from .model import Block, Evidence, Locator, TableCell, Version, VersionSummary
+from .model import Block, DeliverySummary, Evidence, Locator, TableCell, Version, VersionSummary
 from .batch import BatchFile
 
 
@@ -392,6 +392,22 @@ class SqliteStore:
         )
         return tuple(DeliveryConflict(*row) for row in rows)
 
+    def list_deliveries(self) -> tuple[DeliverySummary, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT d.id, json_extract(d.result_json, '$.artifact.title'),
+                          json_extract(d.result_json, '$.state'),
+                          CASE WHEN json_extract(d.result_json, '$.state') = 'done'
+                               THEN COALESCE(revisions.latest, 1) END
+                   FROM deliver_tasks AS d
+                   LEFT JOIN (
+                       SELECT artifact_id, MAX(version) AS latest
+                       FROM artifact_revisions GROUP BY artifact_id
+                   ) AS revisions ON revisions.artifact_id = d.id
+                   ORDER BY d.rowid DESC"""
+            )
+            return tuple(DeliverySummary(*row) for row in rows)
+
     def delivery(self, task_id: str) -> dict:
         with closing(self._connect()) as conn:
             row = conn.execute(
@@ -418,6 +434,18 @@ class SqliteStore:
                 "INSERT INTO skeleton_proposals (id, task_id, title, state) VALUES (?, ?, ?, ?)",
                 (proposal["id"], proposal["task_id"], proposal["title"], proposal["state"]),
             )
+
+    def artifact_versions(self, artifact_id: str) -> tuple[int, ...]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """SELECT version FROM artifact_revisions WHERE artifact_id = ?
+                   UNION ALL
+                   SELECT 1 FROM deliver_tasks
+                   WHERE id = ? AND json_extract(result_json, '$.state') = 'done'
+                   ORDER BY version DESC""",
+                (artifact_id, artifact_id),
+            )
+            return tuple(row[0] for row in rows)
 
     def artifact(self, artifact_id: str, version: int | None = None) -> dict:
         with closing(self._connect()) as conn:

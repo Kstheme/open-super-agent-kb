@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>原文证据</h1>
+<section class="panel evidence-detail" aria-labelledby="source-title">
+  <h2 id="source-title">{{ evidence.original_name }}</h2>
+  <dl>
+    <dt>资料版本</dt>
+    <dd><code>{{ evidence.version_id }}</code></dd>
+    <dt>位置</dt>
+    <dd>{{ position }}</dd>
+  </dl>
+  <blockquote>{{ evidence.quote }}</blockquote>
+  <a class="button" href="/evidence/{{ evidence.id }}/original">下载此版本原件</a>
+</section>
+{% endblock %}
