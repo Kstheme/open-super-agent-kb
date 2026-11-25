@@ -226,8 +226,8 @@ class SqliteStore:
             )
             conn.execute(
                 """INSERT INTO word_audit_review_imports (version_id, decision_boundary)
-                   SELECT ?, MAX(rowid) FROM word_audit_decisions
-                   HAVING COUNT(*) > 0 AND EXISTS (
+                   SELECT ?, boundary FROM (SELECT MAX(rowid) AS boundary FROM word_audit_decisions)
+                   WHERE boundary IS NOT NULL AND EXISTS (
                        SELECT 1 FROM source_versions WHERE document_id = ? AND id <> ?
                    )""",
                 (version.id, version.document_id, version.id),
