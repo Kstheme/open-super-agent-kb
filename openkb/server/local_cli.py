@@ -17,14 +17,16 @@ from .runtime import AppSettings
 def configure(commands):
     initialize = commands.add_parser("init", help="Prepare the local data directory and model configuration")
     serve = commands.add_parser("serve", help="Open the local Web application on 127.0.0.1")
-    for command in (initialize, serve):
+    diagnose = commands.add_parser("doctor", help="Check local storage and model connectivity")
+    for command in (initialize, serve, diagnose):
         command.add_argument("--data-dir", type=Path, help="Local workspace (default: ~/.openkb)")
     initialize.add_argument("--config", type=Path, help="Copy an existing model configuration into the workspace")
     initialize.add_argument("--base-url", help="OpenAI-compatible API root when creating a new configuration")
     initialize.add_argument("--model-id", help="Model identifier when creating a new configuration")
     serve.add_argument("--config", type=Path, help="Use an existing model configuration file directly")
     serve.add_argument("--port", type=int, default=8765, help="Local port (default: 8765)")
-    return {"init": initialize, "serve": serve}
+    diagnose.add_argument("--config", type=Path, help="Use an existing model configuration file directly")
+    return {"init": initialize, "serve": serve, "doctor": diagnose}
 
 
 def _write_new_config(target: Path, data: bytes) -> None:
@@ -83,6 +85,10 @@ def run(args, parser: argparse.ArgumentParser) -> int:
     try:
         if args.command == "init":
             return _initialize(args)
+        if args.command == "doctor":
+            from .health import doctor
+
+            return doctor(AppSettings.from_paths(args.data_dir, args.config))
         if not 1 <= args.port <= 65535:
             raise ValueError("--port must be between 1 and 65535")
         settings = AppSettings.from_paths(args.data_dir, args.config)

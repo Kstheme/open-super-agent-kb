@@ -136,6 +136,15 @@ def _block(data: str) -> Block:
     return Block(**fields)
 
 
+def check_database(path: Path) -> None:
+    """Read the existing ledger schema without creating or migrating a database."""
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            conn.execute("PRAGMA schema_version").fetchone()
+    except sqlite3.Error as error:
+        raise StoreError(str(error)) from error
+
+
 @contextmanager
 def open_delivery_store(path: Path) -> Iterator["SqliteStore"]:
     """Expose delivery storage failures through the ledger boundary."""

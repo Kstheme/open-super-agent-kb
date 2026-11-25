@@ -67,4 +67,7 @@ def create_app(settings: AppSettings) -> FastAPI:
     def workspace(request: Request):
         return render(request, "workspace.html", title="工作区")
 
+    from .health import status
+
+    app.add_api_route("/status", status, name="status", response_class=HTMLResponse)
     return app
