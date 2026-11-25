@@ -5,6 +5,7 @@
   <p><strong>决定理由</strong> · {{ decision.reason }}</p>
   <p><strong>记录时间（UTC）</strong> · {{ decision.created_at }}</p>
   <a href="/word-audit-decisions">返回审阅决定历史</a>
+  <a href="/word-audit-reviews">查看决定复核</a>
   {% else %}
   <h2 id="word-audit-decision">记录人工决定</h2>
   {% if decision_error %}<p role="alert">{{ decision_error }}</p>{% endif %}

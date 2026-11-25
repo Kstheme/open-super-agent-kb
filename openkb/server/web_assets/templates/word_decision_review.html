@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>人工决定复核</h1>
+<section class="panel" aria-labelledby="decision-review-title">
+  <h2 id="decision-review-title">{{ "待人工确认" if review.state == "pending" else "已人工确认" }}</h2>
+  <p><strong>新版资料</strong> · {{ version.original_name }} · <code>{{ version.id }}</code></p>
+  <p><strong>原审阅目标</strong> · {{ decision.audit.goal }}</p>
+  <p><strong>原人工决定</strong> · {{ "放行" if decision.choice == "release" else "退回修改" }}</p>
+  <p><strong>原决定理由</strong> · {{ decision.reason }}</p>
+  <a href="/word-audit-decisions/{{ decision.id }}">查看原决定及证据</a>
+</section>
+<section class="panel" aria-labelledby="decision-impact-title">
+  <h2 id="decision-impact-title">从变更原文查看影响</h2>
+  {% for item in review["items"] %}
+  <article class="panel" data-claim-id="{{ item.claim_id }}">
+    <h3>受影响声明 · {{ item.old_check }}</h3>
+    <p><a href="/word-audit-decisions/{{ decision.id }}#word-audit-answer">查看受影响的审阅回答</a></p>
+    <div class="review-comparison">
+      <section>
+        <h4>旧版依据</h4>
+        {% set proof = item.old_evidence %}
+        <blockquote>{{ proof.quote }}</blockquote>
+        <p>{{ positions[proof.id] }} · <code>{{ proof.version_id }}</code></p>
+        <a href="/evidence/{{ proof.id }}">打开旧版原文与原件</a>
+      </section>
+      <section>
+        <h4>新版依据</h4>
+        {% if item.new_evidence %}
+        {% set proof = item.new_evidence %}
+        <p>{{ item.new_check }}</p>
+        <blockquote>{{ proof.quote }}</blockquote>
+        <p>{{ positions[proof.id] }} · <code>{{ proof.version_id }}</code></p>
+        <a href="/evidence/{{ proof.id }}">打开新版原文与原件</a>
+        {% else %}
+        <p>无法确认新版中对应的依据，需核对新版原文。</p>
+        {% endif %}
+      </section>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+<section class="panel" aria-labelledby="decision-confirm-title">
+  <h2 id="decision-confirm-title">人工确认</h2>
+  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  {% if review.confirmation %}
+  <p><strong>{{ "保留原决定" if review.confirmation.choice == "keep" else "调整决定" }}</strong> · {{ "放行" if review.confirmation.resulting_choice == "release" else "退回修改" }}</p>
+  <p>{{ review.confirmation.reason }}</p>
+  {% elif review.state == "pending" %}
+  <form action="/word-audit-reviews/{{ review.id }}/confirm" method="post" class="review-form">
+    <label for="review-choice">人工选择</label>
+    <select id="review-choice" name="choice" required>
+      <option value="">选择如何处理</option>
+      <option value="keep">保留原决定</option>
+      <option value="adjust">调整决定</option>
+    </select>
+    <label for="adjusted-choice">调整后的决定（选择调整时必填）</label>
+    <select id="adjusted-choice" name="adjusted_choice">
+      <option value="">选择决定</option>
+      <option value="release">放行</option>
+      <option value="return">退回修改</option>
+    </select>
+    <label for="review-reason">复核理由</label>
+    <textarea id="review-reason" name="reason" rows="2" required></textarea>
+    <button type="submit">保存人工确认</button>
+  </form>
+  {% endif %}
+</section>
+<a href="/">返回工作区</a>
+{% endblock %}

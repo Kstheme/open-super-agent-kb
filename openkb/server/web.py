@@ -47,7 +47,7 @@ def render(request: Request, template: str, *, status_code: int = 200, **context
 
 
 def create_app(settings: AppSettings) -> FastAPI:
-    from . import checklists, documents, reviews, word_audits
+    from . import checklists, documents, reviews, word_audits, word_decision_reviews
     from .health import status
 
     app = FastAPI(title="OpenKB", docs_url=None, redoc_url=None, openapi_url=None)
@@ -82,4 +82,5 @@ def create_app(settings: AppSettings) -> FastAPI:
     app.include_router(checklists.router)
     app.include_router(reviews.router)
     app.include_router(word_audits.router)
+    app.include_router(word_decision_reviews.router)
     return app

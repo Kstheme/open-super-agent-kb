@@ -2,6 +2,21 @@
 {% block content %}
 <section aria-labelledby="workspace-title">
   <h1 id="workspace-title">本地工作区</h1>
+  {% if word_reviews %}
+  <section class="panel" aria-labelledby="word-audit-review-inbox">
+    <h2 id="word-audit-review-inbox">决定复核</h2>
+    {% set pending = word_reviews | selectattr("state", "equalto", "pending") | list %}
+    {% if pending %}
+    <p>待人工确认 · {{ pending | length }} 项</p>
+    <ul class="delivery-list">
+      {% for review in pending %}
+      <li><a href="/word-audit-reviews/{{ review.id }}">核对新版对人工决定的影响</a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <a href="/word-audit-reviews">查看全部决定复核</a>
+  </section>
+  {% endif %}
   <section class="panel" aria-labelledby="word-audit-request">
     <h2 id="word-audit-request">Word 交付审阅</h2>
     <p>核对非网页 Word 的适用范围和数据表格重复表头要求。</p>

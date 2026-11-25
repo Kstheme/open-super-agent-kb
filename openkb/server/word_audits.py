@@ -14,6 +14,7 @@ from .documents import save_upload
 from .evidence_view import evidence_position
 from .web import render
 from .word_audit import audit_sources, run_word_audit
+from .word_audit_reviews import process_imports
 
 
 router = APIRouter()
@@ -21,10 +22,12 @@ router = APIRouter()
 
 def workspace(request: Request, *, goal: str = "", error: str | None = None) -> HTMLResponse:
     with open_delivery_store(request.app.state.settings.database) as store:
+        process_imports(store)
         versions = audit_sources(store)
+        reviews = store.word_audit_reviews()
     return render(
         request, "workspace.html", title="工作区", versions=versions, goal=goal,
-        error=error, status_code=400 if error else 200,
+        word_reviews=reviews, error=error, status_code=400 if error else 200,
     )
 
 
