@@ -476,7 +476,7 @@ class SqliteStore:
         with closing(self._connect()) as conn:
             decision = self._word_audit_decision(conn, decision_id)
             confirmation = self._latest_word_audit_confirmation(conn, decision_id)
-            decision["effective_choice"] = confirmation[0] if confirmation else decision["choice"]
+            decision["effective_choice"] = confirmation or decision["choice"]
             return decision
 
     def _word_audit_decision(self, conn: sqlite3.Connection, decision_id: str) -> dict:
@@ -616,15 +616,39 @@ class SqliteStore:
     @staticmethod
     def _latest_word_audit_confirmation(
         conn: sqlite3.Connection, decision_id: str,
-    ) -> tuple | None:
-        return conn.execute(
-            """SELECT confirmation.resulting_choice, source.rowid
+    ) -> str | None:
+        row = conn.execute(
+            """SELECT confirmation.resulting_choice
                FROM word_audit_review_confirmations AS confirmation
                JOIN word_audit_reviews AS review ON review.id = confirmation.review_id
-               JOIN source_versions AS source ON source.id = review.version_id
-               WHERE review.decision_id = ? ORDER BY source.rowid DESC LIMIT 1""",
+               WHERE review.decision_id = ? ORDER BY confirmation.rowid DESC LIMIT 1""",
             (decision_id,),
         ).fetchone()
+        return row[0] if row is not None else None
+
+    @staticmethod
+    def _supersede_older_word_audit_reviews(conn: sqlite3.Connection, review: dict) -> None:
+        older = conn.execute(
+            """SELECT prior.id, prior.snapshot_json
+               FROM word_audit_reviews AS prior
+               JOIN source_versions AS source ON source.id = prior.version_id
+               JOIN source_versions AS confirmed ON confirmed.id = ?
+               WHERE prior.decision_id = ? AND source.document_id = confirmed.document_id
+                 AND source.rowid < confirmed.rowid
+                 AND NOT EXISTS (
+                     SELECT 1 FROM word_audit_review_confirmations AS confirmation
+                     WHERE confirmation.review_id = prior.id
+                 )""",
+            (review["version_id"], review["decision_id"]),
+        ).fetchall()
+        for review_id, snapshot in older:
+            previous = json.loads(snapshot)
+            if previous["state"] in {"pending", "failed"}:
+                previous.update(state="superseded", superseded_by=review["id"])
+                conn.execute(
+                    "UPDATE word_audit_reviews SET snapshot_json = ? WHERE id = ?",
+                    (json.dumps(previous, ensure_ascii=False), review_id),
+                )
 
     def confirm_word_audit_review(self, review_id: str, choice: str, reason: str,
                                   adjusted_choice: str = "") -> None:
@@ -636,25 +660,19 @@ class SqliteStore:
         with closing(self._connect()) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
             review = self._word_audit_review(conn, review_id)
+            if review["state"] == "superseded":
+                raise ValueError("更新的复核已确认。请查看当前决定。")
             if review["state"] != "pending":
                 raise ValueError("这项复核已处理或暂不可确认。")
             decision = self._word_audit_decision(conn, review["decision_id"])
-            confirmation = self._latest_word_audit_confirmation(conn, decision["id"])
-            if confirmation is not None:
-                (current_choice, latest_version_order) = confirmation
-                (version_order,) = conn.execute(
-                    "SELECT rowid FROM source_versions WHERE id = ?", (review["version_id"],),
-                ).fetchone()
-                if version_order < latest_version_order:
-                    raise ValueError("更新的复核已确认。请查看当前决定。")
-            else:
-                current_choice = decision["choice"]
+            current_choice = self._latest_word_audit_confirmation(conn, decision["id"]) or decision["choice"]
             resulting_choice = adjusted_choice if choice == "adjust" else current_choice
             conn.execute(
                 """INSERT INTO word_audit_review_confirmations
                    (review_id, choice, resulting_choice, reason) VALUES (?, ?, ?, ?)""",
                 (review_id, choice, resulting_choice, reason),
             )
+            self._supersede_older_word_audit_reviews(conn, review)
 
     def flag_delivery_conflict(self, conflict: DeliveryConflict) -> None:
         with closing(self._connect()) as conn, conn:

@@ -74,7 +74,9 @@ PAGE_SPANS = {
 def _stated_page_span(goal: str) -> str:
     single = spans = False
     for clause in re.split(r"[，。；！？,.!?;]", goal):
-        if any(word in clause for word in ("是否", "会不会", "吗", "待核对")):
+        if any(word in clause for word in (
+            "如果", "假设", "若", "是否", "会不会", "可能", "不确定", "没核实", "未核实", "待核对", "吗",
+        )):
             continue
         single |= bool(re.search(
             r"(?:[一两三123]张\s*单页(?:数据)?表|(?:表格|数据表|这张表)(?:(?:不|未|没有)跨页|(?:均|都)?在单页内))",

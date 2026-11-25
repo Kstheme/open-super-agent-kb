@@ -223,6 +223,9 @@ class WordAuditReviewWebTests(BrowserCase):
             self.assertEqual(failure.code, 409)
             self.assertIn("更新的复核已确认", failure.read().decode("utf-8"))
         self.assertIn("当前人工决定</strong> · 放行", self.page(decisions[0]))
+        self.assertNotIn('href="' + older + '"', self.page("/"))
+        self.assertIn("已被新版复核取代", self.page(older))
+        self.assertNotIn("保存人工确认", self.page(older))
 
     def test_first_decision_requires_a_current_cited_document(self):
         policy = write_docx(self.root / "508-applicability-checklist.docx", paragraph("☐" + SCOPE))
@@ -290,3 +293,31 @@ class WordAuditReviewWebTests(BrowserCase):
             html = self.page(review)
             self.assertIn("无法确认新版中对应的依据", html)
             self.assertNotIn("新版缺少支撑原结论的依据", html)
+
+
+    def test_confirmation_in_another_document_keeps_real_confirmation_order(self):
+        word_version, decisions = self.recorded_decisions()
+        documents = self.page("/documents")
+        scope_version = re.search(
+            r'data-version-id="([^"]+)"[^>]*>\s*<div[^>]*>\s*<h3>508-applicability-checklist.docx',
+            documents,
+        )[1]
+        modified_scope = write_docx(self.root / "scope-new.docx", paragraph("A different applicability rule."))
+        self.import_revision(scope_version, modified_scope)
+        inbox = "/word-audit-reviews"
+        scope_reviews = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(inbox)))
+        scope_review = next(link for link in scope_reviews if decisions[0] in self.page(link))
+
+        word = write_word(self.root / "word-new.docx", (NEW_RULE,))
+        self.import_revision(word_version, word)
+        combined = set(re.findall(r'href="(/word-audit-reviews/[^"]+)"', self.page(inbox)))
+        word_review = next(link for link in combined - scope_reviews if decisions[0] in self.page(link))
+        with self.post_form(word_review + "/confirm", {
+            "choice": "keep", "reason": "先确认 Word 表头。",
+        }):
+            pass
+        with self.post_form(scope_review + "/confirm", {
+            "choice": "adjust", "adjusted_choice": "release", "reason": "根据适用范围复核改为放行。",
+        }) as response:
+            self.assertIn("调整决定</strong> · 放行", response.read().decode("utf-8"))
+        self.assertIn("当前人工决定</strong> · 放行", self.page(decisions[0]))

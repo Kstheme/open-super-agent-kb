@@ -116,3 +116,14 @@ class WordAuditEvidenceWebTests(BrowserCase):
         self.assertIn('data-audit-state="done"', known)
         self.assertIn("用户提供 · 表格跨页", known)
         self.assertNotIn('name="page_span"', known)
+
+        for goal in (
+            "如果表格跨页，需要怎么处理？",
+            "不确定表格跨页，请检查。",
+            "我还没核实表格跨页。",
+        ):
+            with self.subTest(goal=goal), self.post_form("/word-audits", {"goal": goal}) as response:
+                waiting = response.read().decode("utf-8")
+                self.assertIn('data-audit-state="waiting"', waiting)
+                self.assertIn('name="page_span"', waiting)
+                self.assertNotIn("用户提供 · 表格跨页", waiting)

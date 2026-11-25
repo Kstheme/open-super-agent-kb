@@ -12,7 +12,9 @@
   {% endif %}
   <p><strong>原决定理由</strong> · {{ decision.reason }}</p>
   <a href="/word-audit-decisions/{{ decision.id }}">查看原决定及证据</a>
-  {% if review.state == "unchanged" %}
+  {% if review.state == "superseded" %}
+  <p><a href="/word-audit-reviews/{{ review.superseded_by }}">查看已确认的新版复核</a></p>
+  {% elif review.state == "unchanged" %}
   <p>原结论未变，原决定继续有效。</p>
   {% elif review.state == "failed" %}
   <p>暂时无法完成复核，原决定及依据仍可查。可重试复核。</p>

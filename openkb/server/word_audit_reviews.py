@@ -17,6 +17,7 @@ REVIEW_STATE_LABELS = {
     "unchanged": "已复核",
     "confirmed": "已人工确认",
     "failed": "复核失败",
+    "superseded": "已被新版复核取代",
 }
 
 
