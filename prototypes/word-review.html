@@ -5,65 +5,160 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Word 交付审阅｜OpenKB 原型</title>
 <style>
-:root{color-scheme:light;--ink:#182b34;--muted:#4d6169;--line:#d6e0de;--accent:#145e50;--soft:#edf6f2;--paper:#fbfcfa;--white:#fff}
+:root {
+  color-scheme:light;
+  --ink:#0f172a;
+  --muted:#475569;
+  --line:#dbe4ee;
+  --accent:#1e3a5f;
+  --soft:#edf4ff;
+  --paper:#f7f9fc;
+  --white:#fff;
+}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 system-ui,"Microsoft YaHei",sans-serif}
-main,header>div{max-width:1200px;margin:auto;padding-inline:24px}
+main,.header-inner{max-width:1248px;margin:auto;padding-inline:28px}
 header{border-bottom:1px solid var(--line);background:var(--white)}
-header>div{min-height:64px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.brand{font-weight:750;font-size:1.15rem}
-.badge{background:var(--soft);color:var(--accent);padding:3px 9px;border-radius:4px;font-size:.83rem;font-weight:700}
-main{padding-block:32px 48px}
+.header-inner{min-height:66px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{display:inline-flex;align-items:center;gap:9px;font-weight:750;font-size:1.15rem}
+.brand-mark{display:grid;place-items:center;width:30px;height:30px;background:var(--accent);border-radius:7px;color:white;font-weight:750;font-size:1rem}
+.badge{background:#eef3f9;color:var(--accent);padding:3px 9px;border-radius:5px;font-size:.81rem;font-weight:650}
+main{padding-block:30px 48px}
 h1,h2,h3,p,dl,ol,ul,blockquote{margin-top:0}
-h1{font-size:clamp(1.8rem,5vw,2.65rem);letter-spacing:-.04em;line-height:1.2;margin-bottom:10px}
-h2{font-size:1.22rem;margin-bottom:12px}
+h1{font-size:clamp(1.95rem,4.6vw,2.9rem);letter-spacing:-.045em;line-height:1.15;margin-bottom:9px}
+h2{font-size:1.2rem;margin-bottom:12px;line-height:1.35}
 h3{font-size:1rem;margin-bottom:4px}
 p{margin-bottom:12px}
-.intro{max-width:70ch;color:var(--muted);margin-bottom:20px}
-.layout{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);gap:20px;align-items:start}
+.intro{max-width:74ch;color:var(--muted);margin-bottom:20px}
+.graph-panel{
+  --graph-border:#425778;--graph-line:#8199bf;
+  padding:20px 22px 22px;margin-bottom:20px;border-radius:13px;color:#f5f8ff;
+  background-color:#142640;
+  background-image:radial-gradient(circle at 1px 1px,#b2c3e42b 1px,transparent 0);
+  background-size:16px 16px;
+}
+.graph-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px 20px;flex-wrap:wrap;margin-bottom:14px}
+.graph-heading h2{margin:0}
+.graph-heading p{margin:0;color:#c5d4eb;font-size:.87rem}
+.flow-graph{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 33px minmax(0,1.1fr) 33px minmax(0,1fr) 30px minmax(0,1fr) 30px minmax(0,1.08fr);
+  grid-template-rows:repeat(2,minmax(56px,1fr));row-gap:14px;align-items:center
+}
+.flow-node{
+  display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px;
+  width:100%;min-height:56px;padding:8px 10px;line-height:1.4;text-align:left;
+  background:#203756;color:#f3f7ff;border:1px solid #52688b;border-radius:8px
+}
+.flow-node:not(:disabled):hover{color:white;background:#304e78;border-color:#93b8f3}
+.flow-node strong{display:block;font-size:.91rem}
+.flow-node small{display:block;margin-top:2px;color:#c9d8ee;font-size:.77rem}
+.flow-node:disabled{cursor:default;background:#192e4a;color:#d4dfef;border-color:#3e5777}
+.flow-node:disabled small{color:#b8c9de}
+.flow-node.active{background:#254577;border-color:#b2caff;box-shadow:inset 0 0 0 1px #9bbcff}
+.flow-node.waiting:not(:disabled){background:#3e3527;border-color:#d8b877}
+.flow-node.waiting small{color:#ffe4aa}
+.flow-node:focus-visible{outline-color:#c7dcff}
+.node-mark{width:10px;height:10px;border:1px solid #9eb6d9;border-radius:50%;background:#192d49}
+.done .node-mark{border-color:#93debc;background:#93debc}
+.active .node-mark{border-color:#c1d6ff;background:#a6c8ff}
+.waiting .node-mark{border-color:#ffdaa0;background:#ffdaa0}
+.flow-intake{grid-column:1;grid-row:1 / 3}
+.flow-scope{grid-column:3;grid-row:1}
+.flow-table{grid-column:3;grid-row:2}
+.flow-answer{grid-column:5;grid-row:1 / 3}
+.flow-decision{grid-column:7;grid-row:1 / 3}
+.flow-review{grid-column:9;grid-row:1 / 3}
+.edge{position:relative;align-self:stretch;grid-row:1 / 3;color:var(--graph-line);pointer-events:none}
+.edge-split{grid-column:2}
+.edge-merge{grid-column:4}
+.edge-decision{grid-column:6}
+.edge-review{grid-column:8}
+.edge::before,.edge::after,.edge i::before,.edge i::after{content:"";position:absolute;background:currentColor}
+.edge::before{top:50%;height:1px;left:0;right:0}
+.edge-split::before{right:50%}
+.edge-merge::before{left:50%}
+.edge-split::after,.edge-merge::after{top:calc(25% - 3.5px);bottom:calc(25% - 3.5px);left:50%;width:1px}
+.edge-split i::before,.edge-split i::after,.edge-merge i::before,.edge-merge i::after{height:1px}
+.edge-split i::before,.edge-split i::after{left:50%;right:0}
+.edge-merge i::before,.edge-merge i::after{left:0;right:50%}
+.edge-split i::before,.edge-merge i::before{top:calc(25% - 3.5px)}
+.edge-split i::after,.edge-merge i::after{bottom:calc(25% - 3.5px)}
+.edge-decision::after,.edge-review::after{top:calc(50% - 3px);right:2px;width:6px;height:6px;background:transparent;border-top:1px solid currentColor;border-right:1px solid currentColor;transform:rotate(45deg)}
+.layout{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:20px;align-items:start}
 .panel{background:var(--white);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:14px;min-width:0}
-.now{border-left:4px solid var(--accent)}
+.now{border-left:4px solid #2563eb}
 .now h2{margin-bottom:4px}
 .now p:last-child,.panel > :last-child{margin-bottom:0}
 .message:empty{display:none}
-.message{background:var(--soft);color:var(--ink);border-radius:6px;padding:10px 14px;margin-bottom:14px}
+.message{background:var(--soft);color:var(--ink);border-radius:6px;padding:9px 14px;margin-bottom:12px}
 button,input,textarea{font:inherit}
-button{background:var(--white);color:var(--ink);border:1px solid #abbdb8;border-radius:6px;padding:8px 12px;font-weight:650;cursor:pointer}
+button{min-height:44px;background:var(--white);color:var(--ink);border:1px solid #a8b8cb;border-radius:6px;padding:8px 12px;font-weight:650;cursor:pointer}
 button:hover{border-color:var(--accent);background:var(--soft)}
 .primary{background:var(--accent);color:white;border-color:var(--accent)}
-.primary:hover{background:#104a40;color:white}
-:focus-visible{outline:3px solid #168770;outline-offset:3px}
-textarea,input{width:100%;border:1px solid #abbdb8;border-radius:6px;padding:9px 11px;color:var(--ink);background:white}
+.primary:hover{background:#284b79;color:white}
+:focus-visible{outline:3px solid #2563eb;outline-offset:3px}
+textarea,input{width:100%;border:1px solid #a8b8cb;border-radius:6px;padding:9px 11px;color:var(--ink);background:white}
 textarea{min-height:82px;resize:vertical}
 label{display:block;font-weight:650;margin-bottom:5px}
 small,.muted,.help{color:var(--muted)}
 .help{display:block;margin:4px 0 10px;font-size:.88rem}
 .actions{display:flex;flex-wrap:wrap;gap:8px}
-.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
-.tabs button{padding:5px 8px;font-size:.86rem}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tabs button{padding:5px 9px;font-size:.86rem}
 [aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--accent)}
 .step{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
-.claim{padding-top:12px;margin-top:12px;border-top:1px solid var(--line)}
-details{margin-top:9px}
-summary{cursor:pointer;color:var(--accent);font-weight:650}
+.claim{padding-top:12px;margin-top:12px;border-top:1px solid var(--line);scroll-margin:18px}
+details{margin-top:9px;scroll-margin:18px}
+summary{cursor:pointer;color:var(--accent);font-weight:650;padding:4px 0}
 .trace{padding-left:21px;margin:8px 0}
 .trace li{padding:4px 0;overflow-wrap:anywhere}
-blockquote{border-left:3px solid var(--accent);background:var(--soft);padding:8px 12px;margin:5px 0}
+blockquote{border-left:3px solid #517cbd;background:var(--soft);padding:8px 12px;margin:5px 0}
 .sources,.events,.history{padding-left:20px;margin-bottom:8px}
 .sources li,.events li,.history li{margin:5px 0;overflow-wrap:anywhere}
 .compare{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .compare>div{border:1px solid var(--line);border-radius:6px;padding:10px}
-.status{color:var(--accent);font-weight:700} a{color:var(--accent);font-weight:650}
+.status,a{color:var(--accent);font-weight:700}
 form>.actions{margin-top:10px}
-@media(max-width:780px){.layout{grid-template-columns:1fr}}
-@media(max-width:480px){main,header>div{padding-inline:14px}.panel{padding:14px}.compare{grid-template-columns:1fr}}
+[id$="-panel"]{scroll-margin:18px}
+@media(max-width:980px){
+  .flow-graph{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr)}
+  .flow-node{gap:7px;padding-inline:7px}
+}
+@media(max-width:720px){
+  main,.header-inner{padding-inline:16px}
+  main{padding-block:24px 36px}
+  .layout{grid-template-columns:1fr;gap:12px}
+  .graph-panel{padding:15px}
+  .graph-heading{margin-bottom:10px}
+  .flow-graph{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(5,auto);gap:10px;position:relative}
+  .flow-graph::before{content:"";position:absolute;left:50%;top:10px;bottom:10px;width:1px;background:var(--graph-line)}
+  .edge{display:none}
+  .flow-node{min-height:46px;z-index:0;padding:5px 9px;align-content:center}
+  .flow-intake,.flow-answer,.flow-decision,.flow-review{grid-column:1 / 3}
+  .flow-intake{grid-row:1}
+  .flow-scope{grid-row:2;grid-column:1}
+  .flow-table{grid-row:2;grid-column:2}
+  .flow-answer{grid-row:3}
+  .flow-decision{grid-row:4}
+  .flow-review{grid-row:5}
+}
+@media(max-width:480px){.panel{padding:14px}.compare{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
-<header><div><span class="brand">OpenKB</span><span class="badge">交互原型 · 固定演示数据</span></div></header>
+<header><div class="header-inner"><span class="brand"><span class="brand-mark" aria-hidden="true">O</span>OpenKB</span><span class="badge">交互原型 · 固定数据</span></div></header>
 <main>
   <h1>Word 交付审阅</h1>
-  <p class="intro">试着交给 Super Agent 一项审阅任务。从首页看得懂下一步吗？资料更新后，你能找到为什么这项决定需要你重新确认吗？</p>
+  <p class="intro">把交付审阅交给 Super Agent，核对结论和原文，再由你确认决定。</p>
+  <section class="graph-panel" aria-labelledby="workflow-title">
+    <div class="graph-heading">
+      <h2 id="workflow-title">审阅流程</h2>
+      <p>点击可用节点，查看这一步的结果与依据。</p>
+    </div>
+    <div id="workflow-nodes" class="flow-graph"></div>
+  </section>
   <p id="message" class="message" role="status" aria-live="polite"></p>
   <div class="layout">
     <div id="workspace"></div>
@@ -209,29 +304,29 @@ function current() {
 }
 
 function renderAnswer() {
-  if (!state.request) return '<section class="panel"><h2>问知识库</h2><form data-form="ask">' +
+  if (!state.request) return '<section id="ask-panel" class="panel" tabindex="-1"><h2>问知识库</h2><form data-form="ask">' +
     '<label for="question">你想审阅什么？</label><textarea id="question" name="value" required>' + esc(question) +
     '</textarea><small class="help">此原型用固定的 Word 场景演示，其他提问仍显示这组样例。</small>' +
     '<button class="primary" type="submit">提交审阅</button></form></section>';
   const scopeFinding = "这个非网页 Word 交付件无需检查 Bypass Blocks。";
   const tableFinding = "按当时采用的规则，单页表和跨页表都需要补设重复表头。";
-  return '<section class="panel"><h2>' + (state.revision ? '原审阅建议 · 依据 v1' : '审阅建议') + '</h2><p class="muted">委托 · ' + esc(state.request) +
+  return '<section id="answer-panel" class="panel" tabindex="-1"><h2>' + (state.revision ? '原审阅建议 · 依据 v1' : '审阅建议') + '</h2><p class="muted">委托 · ' + esc(state.request) +
     '</p><p><strong>用户提供的情况</strong> · 两张数据表都未设置重复表头。此演示未检查交付原件。</p>' +
     '<div class="claim"><h3>适用性 · 无需检查 Bypass Blocks</h3>' + trace("scope-trace", scopeFinding, scope) + '</div>' +
-    '<div class="claim"><h3>数据表格 · ' + (state.documents ? '两张都需补设' : '依据不足') + '</h3>' +
+    '<div id="table-finding" class="claim" tabindex="-1"><h3>数据表格 · ' + (state.documents ? '两张都需补设' : '依据不足') + '</h3>' +
     (state.documents ? trace("table-trace", tableFinding, word.base) :
       '<p>当前缺少 Word 检查表，先保留这项判断。</p>' + button("supply","补充 Word 检查表",true)) + '</div></section>';
 }
 function renderDecision() {
   if (!state.request || !state.documents) return "";
-  if (!state.decisions.length) return '<section class="panel"><h2>记录人工决定</h2><p>示例建议退回修改，由你确认是否记录。</p>' +
+  if (!state.decisions.length) return '<section id="decision-panel" class="panel" tabindex="-1"><h2>记录人工决定</h2><p>示例建议退回修改，由你确认是否记录。</p>' +
     '<form data-form="record"><label for="reason">决定理由</label><input id="reason" name="value" value="两张数据表都未设置重复表头，需要补设。">' +
     '<div class="actions"><button class="primary" type="submit">记录退回决定</button></div></form></section>';
   const list = state.decisions.map((decision,index) => '<li><strong>' + esc(decision.title) +
     '</strong><p>' + esc(decision.reason) + '</p><details><summary>查看当时的两份依据</summary>' +
     trace("decision-rule-"+index, decision.source.claim, decision.source) +
     trace("decision-scope-"+index, scope.claim, decision.scope) + '</details></li>').join("");
-  return '<section class="panel"><h2>决定历史</h2><ol class="history">' + list + '</ol></section>';
+  return '<section id="decision-panel" class="panel" tabindex="-1"><h2>决定历史</h2><ol class="history">' + list + '</ol></section>';
 }
 function renderReview() {
   if (!state.review) return "";
@@ -253,7 +348,7 @@ function renderReview() {
     '<form data-form="confirm"><p><label for="review-reason">本次确认理由（可选）</label><input id="review-reason" name="value"></p><div class="actions">' +
     (state.revision === "removed" ? '' : '<button class="primary" type="submit" value="confirm">确认调整决定</button>') +
     '<button type="submit" value="keep">保留原决定</button></div></form>' : "";
-  return '<section id="review-panel" class="panel"><h2>系统发起的复核 · ' + heading + '</h2><p>' +
+  return '<section id="review-panel" class="panel" tabindex="-1"><h2>系统发起的复核 · ' + heading + '</h2><p>' +
     explanation + '</p>' + impact + choose + '</section>';
 }
 function renderSidebar() {
@@ -268,7 +363,7 @@ function renderSidebar() {
     '</div><p>' + scenario.description + '</p><div class="step">' + (next ?
     '<small class="help">第 ' + (state.step+1) + ' 步，共 ' + scenario.steps.length + ' 步</small><button class="primary" type="button" data-guide>' +
     next[1] + '</button>' : '<p class="status">演练完成</p>') + '</div></section>' +
-    '<section class="panel"><h2>本次资料</h2>' + list +
+    '<section id="sources-panel" class="panel" tabindex="-1"><h2>本次资料</h2>' + list +
     (state.decisions.length ? button("import",state.revision ? "再次导入同一新版" : "导入模拟新版") : "") +
     '<details><summary>查看 Super Agent 的行动</summary>' + (state.events.length ?
       '<ol class="events">' + state.events.map(event => '<li>' + esc(event) + '</li>').join("") + '</ol>' :
@@ -278,6 +373,34 @@ function renderSidebar() {
       .map(([action,title])=>button(action,title)).join("") +
     '</div></details></section>';
 }
+function renderGraph() {
+  const asked = Boolean(state.request);
+  const checked = asked && state.documents;
+  const recorded = state.decisions.length > 0;
+  const now = state.review === "pending" ? "review" : !asked ? "intake" : !checked ? "table" : !recorded ? "decision" : !state.revision ? "review" : "";
+  const nodes = [
+    ["intake", "提交委托", asked ? "已提交" : "待提交", asked ? "answer-panel" : "ask-panel", asked ? "done" : ""],
+    ["scope", "核对适用范围", asked ? "已查证" : "待查证", asked ? "scope-trace" : "", asked ? "done" : ""],
+    ["table", "核对表头规则", checked ? "已查证" : asked ? "依据不足" : "待查证",
+      checked ? "table-trace" : asked ? "table-finding" : "", checked ? "done" : asked ? "waiting" : ""],
+    ["answer", "查看审阅结论", checked ? "建议已就绪" : asked ? "部分有依据" : "待形成",
+      asked ? "answer-panel" : "", checked ? "done" : asked ? "waiting" : ""],
+    ["decision", "记录人工决定", recorded ? "已记录" : checked ? "待确认" : "待审阅",
+      checked ? "decision-panel" : "", recorded ? "done" : ""],
+    ["review", "新版主动复核", state.review === "pending" ? "待你确认" : state.review === "confirmed" ? "已确认" :
+      state.review === "unchanged" ? "结论未变" : "等待新版",
+      state.review ? "review-panel" : recorded ? "sources-panel" : "",
+      state.review === "pending" ? "waiting" : state.review ? "done" : ""]
+  ];
+  document.getElementById("workflow-nodes").innerHTML = nodes.map(([key, title, status, target, tone]) =>
+    '<button type="button" class="flow-node flow-' + key + ' ' + tone + (now === key ? ' active' : '') +
+    '" data-target="' + target + '"' + (target ? '' : ' disabled') +
+    (now === key ? ' aria-current="step"' : '') +
+    '><span class="node-mark" aria-hidden="true"></span><span><strong>' + title + '</strong><small>' +
+    status + '</small></span></button>').join("") +
+    ["split","merge","decision","review"].map(edge => '<span class="edge edge-' + edge + '" aria-hidden="true"><i></i></span>').join("");
+}
+
 function render() {
   const [title, next] = current();
   message.textContent = state.notice;
@@ -285,6 +408,7 @@ function render() {
     next + '</p>' + (state.review === 'pending' ? '<a href="#review-panel">打开待复核事项</a>' : '') +
     '</section>' + renderReview() + renderAnswer() + renderDecision();
   renderSidebar();
+  renderGraph();
   if (opened) {
     const target = document.getElementById(opened);
     if (target) {
@@ -322,6 +446,15 @@ document.addEventListener("click", event => {
   }
   const control = event.target.closest("button");
   if (!control) return;
+  if (control.dataset.target) {
+    const target = document.getElementById(control.dataset.target);
+    const summary = target.querySelector(":scope > summary");
+    if (summary && !target.open) summary.click();
+    const updatedTarget = document.getElementById(control.dataset.target);
+    (updatedTarget.querySelector(":scope > summary") || updatedTarget).focus();
+    updatedTarget.scrollIntoView({block:"nearest"});
+    return;
+  }
   if (control.dataset.scenario) {
     state = create(control.dataset.scenario);
     render();
