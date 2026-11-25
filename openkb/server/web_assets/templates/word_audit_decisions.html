@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>审阅决定历史</h1>
+{% if decisions %}
+<ul class="delivery-list">
+  {% for decision in decisions %}
+  <li>
+    <a href="/word-audit-decisions/{{ decision.id }}">{{ "放行" if decision.choice == "release" else "退回修改" }} · {{ decision.audit.goal }}</a>
+    <p>{{ decision.reason }}</p>
+    <small>{{ decision.created_at }} UTC</small>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>尚未记录人工决定。</p>
+{% endif %}
+<a href="/">返回工作区</a>
+{% endblock %}

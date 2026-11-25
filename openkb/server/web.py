@@ -25,6 +25,7 @@ _NAVIGATION = (
     ("documents", "资料"),
     ("checklists", "清单"),
     ("reviews", "复核"),
+    ("word_audit_decisions", "审阅决定"),
     ("status", "连接状态"),
 )
 

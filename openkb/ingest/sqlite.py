@@ -3,7 +3,9 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import asdict
+from hashlib import sha256
 from pathlib import Path
+from uuid import uuid4
 
 from openkb.core.delivery import DeliveryConflict
 
@@ -103,6 +105,15 @@ CREATE TABLE IF NOT EXISTS word_audits (
     id TEXT PRIMARY KEY,
     snapshot_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS word_audit_decisions (
+    id TEXT PRIMARY KEY,
+    audit_id TEXT NOT NULL REFERENCES word_audits(id),
+    choice TEXT NOT NULL CHECK (choice IN ('release', 'return')),
+    reason TEXT NOT NULL,
+    audit_snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS word_audit_decisions_audit ON word_audit_decisions(audit_id);
 """
 
 
@@ -373,12 +384,78 @@ class SqliteStore:
 
     def word_audit(self, audit_id: str) -> dict:
         with closing(self._connect()) as conn:
-            row = conn.execute(
-                "SELECT snapshot_json FROM word_audits WHERE id = ?", (audit_id,),
-            ).fetchone()
+            return self._word_audit(conn, audit_id)
+
+    @staticmethod
+    def _word_audit(conn: sqlite3.Connection, audit_id: str) -> dict:
+        row = conn.execute(
+            "SELECT snapshot_json FROM word_audits WHERE id = ?", (audit_id,),
+        ).fetchone()
         if row is None:
             raise KeyError(f"Unknown Word audit: {audit_id}")
         return json.loads(row[0])
+
+    @staticmethod
+    def word_audit_snapshot_id(audit: dict) -> str:
+        snapshot = json.dumps(audit, ensure_ascii=False, sort_keys=True)
+        return sha256(snapshot.encode("utf-8")).hexdigest()
+
+    def record_word_audit_decision(
+        self, audit_id: str, choice: str, reason: str, *, answer_snapshot: str | None = None,
+    ) -> dict:
+        if choice not in ("release", "return"):
+            raise ValueError("请选择放行或退回修改。")
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("请填写决定理由。")
+        decision_id = uuid4().hex
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            audit = self._word_audit(conn, audit_id)
+            if answer_snapshot is not None and answer_snapshot != self.word_audit_snapshot_id(audit):
+                raise ValueError("审阅建议已更新，请核对后再保存决定。")
+            if not audit["covered"]:
+                raise ValueError("当前审阅暂无有依据的建议。")
+            conn.execute(
+                """INSERT INTO word_audit_decisions (id, audit_id, choice, reason, audit_snapshot_json)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (decision_id, audit_id, choice, reason, json.dumps(audit, ensure_ascii=False)),
+            )
+            return self._word_audit_decision(conn, decision_id)
+
+    def word_audit_decision(self, decision_id: str) -> dict:
+        with closing(self._connect()) as conn:
+            return self._word_audit_decision(conn, decision_id)
+
+    def _word_audit_decision(self, conn: sqlite3.Connection, decision_id: str) -> dict:
+        row = conn.execute(
+            """SELECT id, audit_id, choice, reason, created_at, audit_snapshot_json
+               FROM word_audit_decisions WHERE id = ?""",
+            (decision_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown Word audit decision: {decision_id}")
+        return self._decision_snapshot(row)
+
+    def word_audit_decisions(self, audit_id: str | None = None) -> tuple[dict, ...]:
+        query = """SELECT id, audit_id, choice, reason, created_at, audit_snapshot_json
+                   FROM word_audit_decisions"""
+        where, parameters = (" WHERE audit_id = ?", (audit_id,)) if audit_id is not None else ("", ())
+        with closing(self._connect()) as conn:
+            rows = conn.execute(query + where + " ORDER BY rowid DESC", parameters)
+            return tuple(self._decision_snapshot(row) for row in rows)
+
+    @staticmethod
+    def _decision_snapshot(row: tuple) -> dict:
+        decision_id, audit_id, choice, reason, created_at, audit_json = row
+        return {
+            "id": decision_id,
+            "audit_id": audit_id,
+            "choice": choice,
+            "reason": reason,
+            "created_at": created_at,
+            "audit": json.loads(audit_json),
+        }
 
     def flag_delivery_conflict(self, conflict: DeliveryConflict) -> None:
         with closing(self._connect()) as conn, conn:

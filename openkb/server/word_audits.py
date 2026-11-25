@@ -4,7 +4,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from openkb.ingest.model import Locator
-from openkb.ingest.sqlite import open_delivery_store
+from openkb.ingest.sqlite import SqliteStore, open_delivery_store
 
 from .evidence_view import evidence_position
 from .web import render
@@ -45,6 +45,12 @@ def word_audit(request: Request, audit_id: str):
     except KeyError:
         raise HTTPException(404, "找不到此审阅。") from None
 
+    return render_word_audit(request, audit)
+
+
+def render_word_audit(
+    request: Request, audit: dict, *, decision: dict | None = None, decision_error: str | None = None,
+) -> HTMLResponse:
     positions = {
         proof["id"]: evidence_position(Locator(**proof["locator"]), proof["block_id"])
         for item in audit["covered"]
@@ -53,4 +59,43 @@ def word_audit(request: Request, audit_id: str):
     return render(
         request, "word_audit.html", title="Word 交付审阅", audit=audit, positions=positions,
         slots={slot["id"]: slot["title"] for slot in audit["skeleton"]},
+        decision=decision, decision_error=decision_error, status_code=400 if decision_error else 200,
+        answer_snapshot=SqliteStore.word_audit_snapshot_id(audit),
+    )
+
+
+@router.get("/word-audit-decisions", response_class=HTMLResponse)
+def word_audit_decisions(request: Request):
+    with open_delivery_store(request.app.state.settings.database) as store:
+        decisions = store.word_audit_decisions()
+    return render(request, "word_audit_decisions.html", title="审阅决定历史", decisions=decisions)
+
+
+@router.get("/word-audit-decisions/{decision_id}", response_class=HTMLResponse)
+def word_audit_decision(request: Request, decision_id: str):
+    try:
+        with open_delivery_store(request.app.state.settings.database) as store:
+            decision = store.word_audit_decision(decision_id)
+    except KeyError:
+        raise HTTPException(404, "找不到此审阅决定。") from None
+    return render_word_audit(request, decision["audit"], decision=decision)
+
+
+@router.post("/word-audits/{audit_id}/decisions")
+def record_word_audit_decision(
+    request: Request, audit_id: str, choice: str = Form(""), reason: str = Form(""),
+    answer_snapshot: str | None = Form(None),
+):
+    try:
+        with open_delivery_store(request.app.state.settings.database) as store:
+            try:
+                decision = store.record_word_audit_decision(
+                    audit_id, choice, reason, answer_snapshot=answer_snapshot,
+                )
+            except ValueError as error:
+                return render_word_audit(request, store.word_audit(audit_id), decision_error=str(error))
+    except KeyError:
+        raise HTTPException(404, "找不到此审阅。") from None
+    return RedirectResponse(
+        router.url_path_for("word_audit_decision", decision_id=decision["id"]), status_code=303,
     )
