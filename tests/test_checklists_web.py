@@ -1,7 +1,11 @@
+from html import unescape
 import re
 from urllib.error import HTTPError
 from urllib.parse import unquote, urlsplit
 from urllib.request import urlopen
+
+from openkb.ingest.ledger import Ledger
+from openkb.ingest.sqlite import open_delivery_store
 
 from review_fixtures import TABLE_RULE, paragraph, write_docx, write_word
 from web_fixtures import BrowserCase
@@ -44,11 +48,32 @@ class ChecklistsWebTests(BrowserCase):
         self.assertIn("数据表格", self.page(artifact_path + "?version=1"))
 
         table = result.split('data-slot-id="data_tables"', 1)[1]
-        evidence_path = re.search(r'href="(/evidence/[a-f0-9]+)"', table)[1]
-        evidence = self.page(evidence_path)
+        selection = re.search(r'href="([^"]*evidence=([a-f0-9]+)#evidence)"', table)
+        self.assertIsNotNone(selection)
+        evidence_url = urlsplit(unescape(selection[1]))
+        self.assertEqual(evidence_url.path, artifact_path)
+        self.assertIn("version=1", evidence_url.query)
+        selected = self.page(evidence_url.path + "?" + evidence_url.query)
+        self.assertIn('data-slot-id="data_tables"', selected)
+        evidence = selected.split('id="evidence"', 1)[1]
         self.assertIn(TABLE_RULE, evidence)
         self.assertIn(self.sources["section508-word.docx"], evidence)
         self.assertIn("第 2 张表，第 1 行", evidence)
+        evidence_path = "/evidence/" + selection[2]
+        self.assertIn(TABLE_RULE, self.page(evidence_path))
+        self.assertIn(evidence_path + "/original", evidence)
+
+        with open_delivery_store(self.settings.database) as store:
+            ledger = Ledger(store)
+            cited = ledger.locate_evidence(selection[2])
+            unrelated = ledger.add_evidence(
+                cited.version_id, cited.block_id, cited.quote[:12], quote_start=cited.quote_start,
+            )
+        self.assertIn(cited.quote[:12], self.page("/evidence/" + unrelated.id))
+        with self.assertRaises(HTTPError) as unlinked:
+            self.page(artifact_path + "?version=1&evidence=" + unrelated.id)
+        with unlinked.exception as response:
+            self.assertEqual(response.code, 404)
         with urlopen(self.address + evidence_path + "/original", timeout=5) as download:
             self.assertIn("section508-word.docx", unquote(download.headers["Content-Disposition"]))
             self.assertEqual(download.read(), self.original_word)

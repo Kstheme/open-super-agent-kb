@@ -59,15 +59,35 @@ def checklist_task(request: Request, task_id: str):
 
 
 @router.get("/checklists/{artifact_id}", response_class=HTMLResponse)
-def checklist(request: Request, artifact_id: str, version: int | None = Query(None, ge=1)):
-    try:
-        with open_delivery_store(request.app.state.settings.database) as store:
+def checklist(
+    request: Request,
+    artifact_id: str,
+    version: int | None = Query(None, ge=1),
+    evidence: str | None = None,
+):
+    selected = None
+    position = None
+    with open_delivery_store(request.app.state.settings.database) as store:
+        try:
             artifact = store.artifact(artifact_id, version)
             history = store.artifact_versions(artifact_id)
-    except (KeyError, ValueError):
-        raise HTTPException(404, "找不到此清单版本。") from None
+        except (KeyError, ValueError):
+            raise HTTPException(404, "找不到此清单版本。") from None
+        if evidence is not None:
+            if not any(
+                reference["id"] == evidence
+                for item in artifact["items"]
+                for reference in item["evidence"]
+            ):
+                raise HTTPException(404, "此清单版本没有引用该证据。")
+            try:
+                selected = Ledger(store).locate_evidence(evidence)
+            except KeyError:
+                raise HTTPException(404, "找不到此原文证据。") from None
+            position = _position(selected.locator, selected.block_id)
     return render(
         request, "checklist.html", title=artifact["title"], artifact=artifact, history=history,
+        selected_evidence=selected, position=position,
     )
 
 
