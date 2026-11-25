@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word 交付审阅｜OpenKB 原型</title>
+<style>
+:root{color-scheme:light;--ink:#182b34;--muted:#4d6169;--line:#d6e0de;--accent:#145e50;--soft:#edf6f2;--paper:#fbfcfa;--white:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 system-ui,"Microsoft YaHei",sans-serif}
+main,header>div{max-width:1200px;margin:auto;padding-inline:24px}
+header{border-bottom:1px solid var(--line);background:var(--white)}
+header>div{min-height:64px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-weight:750;font-size:1.15rem}
+.badge{background:var(--soft);color:var(--accent);padding:3px 9px;border-radius:4px;font-size:.83rem;font-weight:700}
+main{padding-block:32px 48px}
+h1,h2,h3,p,dl,ol,ul,blockquote{margin-top:0}
+h1{font-size:clamp(1.8rem,5vw,2.65rem);letter-spacing:-.04em;line-height:1.2;margin-bottom:10px}
+h2{font-size:1.22rem;margin-bottom:12px}
+h3{font-size:1rem;margin-bottom:4px}
+p{margin-bottom:12px}
+.intro{max-width:70ch;color:var(--muted);margin-bottom:20px}
+.layout{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);gap:20px;align-items:start}
+.panel{background:var(--white);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:14px;min-width:0}
+.now{border-left:4px solid var(--accent)}
+.now h2{margin-bottom:4px}
+.now p:last-child,.panel > :last-child{margin-bottom:0}
+.message:empty{display:none}
+.message{background:var(--soft);color:var(--ink);border-radius:6px;padding:10px 14px;margin-bottom:14px}
+button,input,textarea{font:inherit}
+button{background:var(--white);color:var(--ink);border:1px solid #abbdb8;border-radius:6px;padding:8px 12px;font-weight:650;cursor:pointer}
+button:hover{border-color:var(--accent);background:var(--soft)}
+.primary{background:var(--accent);color:white;border-color:var(--accent)}
+.primary:hover{background:#104a40;color:white}
+:focus-visible{outline:3px solid #168770;outline-offset:3px}
+textarea,input{width:100%;border:1px solid #abbdb8;border-radius:6px;padding:9px 11px;color:var(--ink);background:white}
+textarea{min-height:82px;resize:vertical}
+label{display:block;font-weight:650;margin-bottom:5px}
+small,.muted,.help{color:var(--muted)}
+.help{display:block;margin:4px 0 10px;font-size:.88rem}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.tabs button{padding:5px 8px;font-size:.86rem}
+[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--accent)}
+.step{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.claim{padding-top:12px;margin-top:12px;border-top:1px solid var(--line)}
+details{margin-top:9px}
+summary{cursor:pointer;color:var(--accent);font-weight:650}
+.trace{padding-left:21px;margin:8px 0}
+.trace li{padding:4px 0;overflow-wrap:anywhere}
+blockquote{border-left:3px solid var(--accent);background:var(--soft);padding:8px 12px;margin:5px 0}
+.sources,.events,.history{padding-left:20px;margin-bottom:8px}
+.sources li,.events li,.history li{margin:5px 0;overflow-wrap:anywhere}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.compare>div{border:1px solid var(--line);border-radius:6px;padding:10px}
+.status{color:var(--accent);font-weight:700} a{color:var(--accent);font-weight:650}
+form>.actions{margin-top:10px}
+@media(max-width:780px){.layout{grid-template-columns:1fr}}
+@media(max-width:480px){main,header>div{padding-inline:14px}.panel{padding:14px}.compare{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div><span class="brand">OpenKB</span><span class="badge">交互原型 · 固定演示数据</span></div></header>
+<main>
+  <h1>Word 交付审阅</h1>
+  <p class="intro">试着交给 Super Agent 一项审阅任务。从首页看得懂下一步吗？资料更新后，你能找到为什么这项决定需要你重新确认吗？</p>
+  <p id="message" class="message" role="status" aria-live="polite"></p>
+  <div class="layout">
+    <div id="workspace"></div>
+    <aside id="sidebar" aria-label="演练和工作记录"></aside>
+  </div>
+</main>
+
+<script>
+const reviewDemo = (() => {
+  const question = "这份非网页 Word 有一张单页数据表和一张跨页数据表，两张都没设置重复表头。哪些要改？需要检查 Bypass Blocks 吗？请给我依据。";
+  const scope = {
+    file: "508-applicability-checklist.docx", version: "官方原件 v1",
+    block: "第 71 段 · 2.4.1 Bypass Blocks",
+    quote: "2.4.1 Bypass Blocks (not required for non-web documents and software)",
+    claim: "非网页文档无需检查 Bypass Blocks。"
+  };
+  const word = {
+    base: {
+      file: "508-word-checklist.docx", version: "官方原件 v1", block: "第 9 张表，第 4 行 · Data Tables",
+      quote: "Tables repeat their header row.", claim: "数据表格需要设置重复表头。"
+    },
+    material: {
+      file: "section508-word-SIMULATED-REVISION.docx", version: "模拟新版 v2", block: "第 9 张表，第 4 行 · Data Tables",
+      quote: "Only data tables that span multiple pages must repeat their header row.", claim: "只有跨页数据表格需要设置重复表头。"
+    },
+    wording: {
+      file: "Word 检查表 · 仅改措辞.docx", version: "模拟新版 v2", block: "第 9 张表，第 4 行 · Data Tables",
+      quote: "Data tables must repeat their header rows.", claim: "数据表格需要设置重复表头。"
+    },
+    removed: {
+      file: "Word 检查表 · 依据删除.docx", version: "模拟新版 v2", block: "第 9 张表，第 4 行 · 旧依据已删除",
+      quote: null, claim: "新版缺少支持原表头要求的依据。"
+    }
+  };
+  const scenarios = {
+    material: {
+      label: "规则变化", description: "先记录决定，导入新版后观察系统会把哪项交给你复核。",
+      steps: [["ask","提交审阅"],["inspect","看表格证据"],["record","记录退回决定"],["import","导入模拟新版"],["inspect-impact","查看变更影响"],["confirm","确认调整决定"]]
+    },
+    missing: {
+      label: "缺少依据", description: "先缺少 Word 检查表，看看系统能回答哪些问题，以及补齐后从哪里继续。",
+      steps: [["ask","提交审阅"],["supply","补充 Word 检查表"],["inspect","查看补齐后的依据"],["record","记录退回决定"]]
+    },
+    wording: {
+      label: "仅改措辞", description: "观察结论仍成立时，系统怎样记录复核，以及重复导入是否增加待办。",
+      steps: [["ask","提交审阅"],["record","记录退回决定"],["import","导入措辞新版"],["import","重复导入同一新版"]]
+    },
+    removed: {
+      label: "依据消失", description: "原文失去支持后，观察系统如何保留旧决定，并把缺口交给人。",
+      steps: [["ask","提交审阅"],["record","记录退回决定"],["import","导入删除依据的新版"],["inspect-impact","查看缺失的依据"]]
+    }
+  };
+  const create = scenario => ({
+    scenario, step: 0, request: "", documents: scenario !== "missing", decisions: [], revision: null,
+    review: null, events: [], notice: ""
+  });
+  function outcome(state, change, notice, event) {
+    return {...state, ...change, notice, events: event ? [...state.events, event] : state.events};
+  }
+  function send(state, action, value = "") {
+    switch (action) {
+      case "ask":
+        if (state.request) return outcome(state, {}, "这条委托已提交。");
+        return outcome(state, {request: value.trim() || question},
+          state.documents ? "已核对两份资料，可以查看审阅建议。" : "已核对适用范围，表头要求还缺一份资料。",
+          state.documents ? "已分别查证适用范围和 Word 表格规则。" : "已查证适用范围，发现表头依据缺失。");
+      case "inspect":
+        return outcome(state, {}, state.request ? "已展开表格结论的溯源。" : "先提交审阅委托。");
+      case "supply":
+        if (state.documents) return outcome(state, {}, "Word 检查表已经可用。");
+        return outcome(state, {documents:true}, "已补充检查表，继续同一条委托并完成表头查证。",
+          "补充 Word 检查表后复用已核对的适用性结论。");
+      case "record":
+        if (!state.request || !state.documents) return outcome(state, {}, "先完成两项查证，再记录该场景的决定。");
+        if (state.decisions.length) return outcome(state, {}, "原决定已记录。可在历史查看当时的依据。");
+        return outcome(state, {decisions:[{
+          title:"退回修改：两张表补设重复表头", reason:value.trim() || "两张数据表都未设置重复表头，规则要求补设。",
+          source:word.base, scope
+        }]}, "已记录人工决定及当时的依据。", "审阅员记录退回修改。");
+      case "import": {
+        if (!state.decisions.length) return outcome(state, {}, "演练先记录原决定，再导入新版。");
+        const revision = state.scenario === "wording" || state.scenario === "removed" ? state.scenario : "material";
+        if (state.revision) return outcome(state, {}, "这份新版已入库。原复核记录保留，待办数量未增加。");
+        const review = revision === "wording" ? "unchanged" : "pending";
+        return outcome(state, {revision, review}, review === "pending" ?
+          "新版已入库。系统已发起复核，找到 1 项待你确认的决定。" :
+          "系统已自动复核。表头要求的含义一致，原决定继续有效。",
+          "新版入库后沿表格规则反查到原回答和人工决定。");
+      }
+      case "inspect-impact":
+        return outcome(state, {}, state.review ? "已展开从变更原文到人工决定的影响路径。" : "先导入模拟新版。");
+      case "confirm":
+      case "keep": {
+        if (state.review !== "pending") return outcome(state, {}, "当前没有待人工确认的决定。");
+        if (action === "confirm" && state.revision === "removed") {
+          return outcome(state, {}, "新版缺少依据，无法确认规则是否改变。可以人工记录保留原决定。");
+        }
+        const keepsOriginal = action === "keep";
+        const decision = {
+          title: keepsOriginal ? "人工确认：保留原决定" : "调整决定：只要求跨页表补设重复表头",
+          reason: value.trim() || (keepsOriginal ? "经人工核对，保留原决定。" : "模拟新版把适用范围限定为跨页表。"),
+          source: keepsOriginal ? word.base : word[state.revision], scope
+        };
+        return outcome(state, {review:"confirmed", decisions:[...state.decisions, decision]},
+          "人工确认完成。历史决定和当时的依据仍可查看。", "审阅员对受影响决定作出人工确认。");
+      }
+      default:
+        return state;
+    }
+  }
+  return {question, scope, word, scenarios, create, send};
+})();
+</script>
+
+<script>
+const {question, scope, word, scenarios, create, send} = reviewDemo;
+const workspace = document.getElementById("workspace");
+const sidebar = document.getElementById("sidebar");
+const message = document.getElementById("message");
+let state = create("material");
+let opened = "";
+const esc = value => String(value).replace(/[&<>"']/g, char => ({
+  "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+})[char]);
+const button = (action, title, primary=false) =>
+  '<button type="button" data-action="' + action + '"' + (primary ? ' class="primary"' : '') + '>' + title + '</button>';
+const trace = (id, finding, source) =>
+  '<details id="' + id + '"><summary>查看原文与溯源</summary><ol class="trace">' +
+  '<li><strong>回答结论</strong> · ' + esc(finding) + '</li>' +
+  '<li><strong>声明</strong> · ' + esc(source.claim) + '</li>' +
+  '<li><strong>证据</strong><blockquote lang="en">' + esc(source.quote) + '</blockquote></li>' +
+  '<li><strong>原文块</strong> · ' + esc(source.block) + '</li>' +
+  '<li><strong>资料版本</strong> · ' + esc(source.file) + ' · ' + esc(source.version) + '</li></ol></details>';
+
+function current() {
+  if (state.review === "pending") return ["待你确认 · 1 项","打开复核，核对哪段原文变了，再决定是否调整原决定。"];
+  if (state.review === "unchanged") return ["已复核 · 0 项待确认","原结论仍成立。可以查看新旧原文和历史决定。"];
+  if (state.review === "confirmed") return ["人工确认完成","可以回看原决定及这次确认。"];
+  if (state.decisions.length) return ["已记录人工决定","导入模拟新版，观察系统如何主动复核。"];
+  if (state.request && !state.documents) return ["等待补充 · 缺少 Word 检查表","适用范围已查证。补充规则资料后会继续同一条委托。"];
+  if (state.request) return ["审阅建议已就绪","查看两项结论的依据，再记录你的决定。"];
+  return ["提交交付审阅","用现有示例问题发起委托，查看 Super Agent 查到了什么。"];
+}
+
+function renderAnswer() {
+  if (!state.request) return '<section class="panel"><h2>问知识库</h2><form data-form="ask">' +
+    '<label for="question">你想审阅什么？</label><textarea id="question" name="value" required>' + esc(question) +
+    '</textarea><small class="help">此原型用固定的 Word 场景演示，其他提问仍显示这组样例。</small>' +
+    '<button class="primary" type="submit">提交审阅</button></form></section>';
+  const scopeFinding = "这个非网页 Word 交付件无需检查 Bypass Blocks。";
+  const tableFinding = "按当时采用的规则，单页表和跨页表都需要补设重复表头。";
+  return '<section class="panel"><h2>' + (state.revision ? '原审阅建议 · 依据 v1' : '审阅建议') + '</h2><p class="muted">委托 · ' + esc(state.request) +
+    '</p><p><strong>用户提供的情况</strong> · 两张数据表都未设置重复表头。此演示未检查交付原件。</p>' +
+    '<div class="claim"><h3>适用性 · 无需检查 Bypass Blocks</h3>' + trace("scope-trace", scopeFinding, scope) + '</div>' +
+    '<div class="claim"><h3>数据表格 · ' + (state.documents ? '两张都需补设' : '依据不足') + '</h3>' +
+    (state.documents ? trace("table-trace", tableFinding, word.base) :
+      '<p>当前缺少 Word 检查表，先保留这项判断。</p>' + button("supply","补充 Word 检查表",true)) + '</div></section>';
+}
+function renderDecision() {
+  if (!state.request || !state.documents) return "";
+  if (!state.decisions.length) return '<section class="panel"><h2>记录人工决定</h2><p>示例建议退回修改，由你确认是否记录。</p>' +
+    '<form data-form="record"><label for="reason">决定理由</label><input id="reason" name="value" value="两张数据表都未设置重复表头，需要补设。">' +
+    '<div class="actions"><button class="primary" type="submit">记录退回决定</button></div></form></section>';
+  const list = state.decisions.map((decision,index) => '<li><strong>' + esc(decision.title) +
+    '</strong><p>' + esc(decision.reason) + '</p><details><summary>查看当时的两份依据</summary>' +
+    trace("decision-rule-"+index, decision.source.claim, decision.source) +
+    trace("decision-scope-"+index, scope.claim, decision.scope) + '</details></li>').join("");
+  return '<section class="panel"><h2>决定历史</h2><ol class="history">' + list + '</ol></section>';
+}
+function renderReview() {
+  if (!state.review) return "";
+  const newer = word[state.revision];
+  const heading = state.review === "pending" ? "待人工确认" : state.review === "unchanged" ? "结论未变" : "已人工确认";
+  const explanation = state.revision === "wording" ? "新版改了措辞，表头要求仍适用于两张表。" :
+    state.revision === "removed" ? "新版删除了原表头依据。需要人核对，原决定已保留。" :
+    "新版将表头要求收窄到跨页表格。单页表的处理建议发生变化，跨页表仍需补设。";
+  const impact = '<details id="impact"><summary>查看变更影响与新旧原文</summary><ol class="trace">' +
+    '<li><strong>变更原文</strong> · ' + esc(newer.file) + ' · ' + esc(newer.block) + '</li>' +
+    '<li><strong>受影响声明</strong> · 数据表格需要设置重复表头。</li>' +
+    '<li><strong>原回答</strong> · 单页表和跨页表都需要补设。</li>' +
+    '<li><strong>人工决定</strong> · ' + esc(state.decisions[0].title) + '</li></ol>' +
+    '<div class="compare"><div><h3>当时依据</h3><blockquote lang="en">' + esc(word.base.quote) +
+    '</blockquote></div><div><h3>新版依据</h3>' + (newer.quote ?
+      '<blockquote lang="en">' + esc(newer.quote) + '</blockquote>' :
+      '<p>新版没有对应的重复表头规则。</p>') + '</div></div></details>';
+  const choose = state.review === "pending" ?
+    '<form data-form="confirm"><p><label for="review-reason">本次确认理由（可选）</label><input id="review-reason" name="value"></p><div class="actions">' +
+    (state.revision === "removed" ? '' : '<button class="primary" type="submit" value="confirm">确认调整决定</button>') +
+    '<button type="submit" value="keep">保留原决定</button></div></form>' : "";
+  return '<section id="review-panel" class="panel"><h2>系统发起的复核 · ' + heading + '</h2><p>' +
+    explanation + '</p>' + impact + choose + '</section>';
+}
+function renderSidebar() {
+  const scenario = scenarios[state.scenario];
+  const next = scenario.steps[state.step];
+  const list = '<ul class="sources"><li>' + esc(scope.file) + ' · 官方原件 v1</li>' +
+    '<li>' + esc(word.base.file) + ' · ' + (state.documents ? '官方原件 v1' : '待补充') + '</li>' +
+    (state.revision ? '<li>' + esc(word[state.revision].file) + ' · ' + esc(word[state.revision].version) + '</li>' : '') + '</ul>';
+  sidebar.innerHTML = '<section class="panel"><h2>按场景试用</h2><div class="tabs" role="group" aria-label="演练场景">' +
+    Object.entries(scenarios).map(([id,item]) => '<button type="button" data-scenario="' + id + '" aria-pressed="' +
+      (state.scenario === id) + '">' + item.label + '</button>').join("") +
+    '</div><p>' + scenario.description + '</p><div class="step">' + (next ?
+    '<small class="help">第 ' + (state.step+1) + ' 步，共 ' + scenario.steps.length + ' 步</small><button class="primary" type="button" data-guide>' +
+    next[1] + '</button>' : '<p class="status">演练完成</p>') + '</div></section>' +
+    '<section class="panel"><h2>本次资料</h2>' + list +
+    (state.decisions.length ? button("import",state.revision ? "再次导入同一新版" : "导入模拟新版") : "") +
+    '<details><summary>查看 Super Agent 的行动</summary>' + (state.events.length ?
+      '<ol class="events">' + state.events.map(event => '<li>' + esc(event) + '</li>').join("") + '</ol>' :
+      '<p class="muted">提交委托后，此处会显示关键查证行动。</p>') + '</details>' +
+    '<details><summary>自由试用</summary><p class="muted">选择任意操作，看看当前状态允许什么。</p><div class="actions">' +
+    [["ask","提交审阅"],["supply","补充资料"],["inspect","看表格证据"],["record","记录退回"],["import","导入新版"],["inspect-impact","看影响"],["confirm","确认调整"],["keep","保留原决定"]]
+      .map(([action,title])=>button(action,title)).join("") +
+    '</div></details></section>';
+}
+function render() {
+  const [title, next] = current();
+  message.textContent = state.notice;
+  workspace.innerHTML = '<section class="panel now"><h2 id="current-status" tabindex="-1">' + title + '</h2><p>' +
+    next + '</p>' + (state.review === 'pending' ? '<a href="#review-panel">打开待复核事项</a>' : '') +
+    '</section>' + renderReview() + renderAnswer() + renderDecision();
+  renderSidebar();
+  if (opened) {
+    const target = document.getElementById(opened);
+    if (target) {
+      target.open = true;
+      target.querySelector("summary").focus();
+    }
+    opened = "";
+  }
+}
+function act(action, value, focus=true) {
+  const scenario = scenarios[state.scenario];
+  const step = scenario.steps[state.step];
+  const attempt = send(state, action, value);
+  const completed = {
+    ask: !!attempt.request, supply: attempt.documents && !!attempt.request, inspect: attempt.documents && !!attempt.request,
+    record: attempt.decisions.length > 0, import: !!attempt.revision, "inspect-impact": !!attempt.review,
+    confirm: attempt.review === "confirmed"
+  };
+  state = {...attempt, step: step && step[0] === action && completed[action] ? state.step + 1 : state.step};
+  if (action === "inspect") opened = "table-trace";
+  if (action === "inspect-impact") opened = "impact";
+  const focusTrace = opened && (action === "inspect" ? completed.inspect : completed["inspect-impact"]);
+  render();
+  if (!focusTrace && focus) document.getElementById("current-status").focus({preventScroll:true});
+}
+document.addEventListener("click", event => {
+  const summary = event.target.closest("#table-trace > summary, #impact > summary");
+  if (summary && !summary.parentElement.open) {
+    const action = summary.parentElement.id === "impact" ? "inspect-impact" : "inspect";
+    if (scenarios[state.scenario].steps[state.step]?.[0] === action) {
+      event.preventDefault();
+      act(action);
+      return;
+    }
+  }
+  const control = event.target.closest("button");
+  if (!control) return;
+  if (control.dataset.scenario) {
+    state = create(control.dataset.scenario);
+    render();
+    document.querySelector('[aria-pressed="true"]').focus();
+  }
+  if (control.dataset.action) act(control.dataset.action);
+  if (control.hasAttribute("data-guide")) {
+    const [action] = scenarios[state.scenario].steps[state.step];
+    const field = action === "ask" ? document.getElementById("question") :
+      action === "record" ? document.getElementById("reason") :
+      action === "confirm" ? document.getElementById("review-reason") : null;
+    act(action, field?.value);
+  }
+});
+document.addEventListener("submit", event => {
+  event.preventDefault();
+  const action = event.submitter?.value || event.target.dataset.form;
+  act(action, new FormData(event.target).get("value") || "");
+});
+render();
+</script>
+</body>
+</html>
