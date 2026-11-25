@@ -5,7 +5,7 @@ from getpass import getpass
 import json
 import os
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, mkstemp
 
 from openkb.agent.model import load_model_config
 from openkb.ingest.ledger import StoreError
@@ -30,13 +30,26 @@ def configure(commands):
 
 
 def _write_new_config(target: Path, data: bytes) -> None:
-    if target.exists():
-        if target.read_bytes() != data:
-            raise ValueError(f"Existing model configuration left unchanged: {target}")
-        return
-    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "wb") as stream:
-        stream.write(data)
+    if not target.exists():
+        descriptor, filename = mkstemp(dir=target.parent, prefix=".openkb-config-")
+        temporary = Path(filename)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+            try:
+                # Windows rename and POSIX link both refuse to overwrite a concurrent writer.
+                if os.name == "nt":
+                    temporary.rename(target)
+                else:
+                    os.link(temporary, target)
+            except FileExistsError:
+                pass
+            else:
+                return
+        finally:
+            temporary.unlink(missing_ok=True)
+    if target.read_bytes() != data:
+        raise ValueError(f"Existing model configuration left unchanged: {target}")
 
 
 def _initialize(args) -> int:

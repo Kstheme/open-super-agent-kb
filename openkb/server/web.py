@@ -9,6 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.routing import NoMatchFound
 
+from openkb.ingest.ledger import StoreError
+
 from .runtime import AppSettings
 
 
@@ -50,6 +52,10 @@ def create_app(settings: AppSettings) -> FastAPI:
     app = FastAPI(title="OpenKB", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.mount("/static", StaticFiles(directory=_ASSETS / "static"), name="static")
+
+    @app.exception_handler(StoreError)
+    async def unavailable_ledger(request: Request, _error: StoreError) -> HTMLResponse:
+        return render(request, "ledger_unavailable.html", title="账本不可用", status_code=503)
 
     @app.middleware("http")
     async def local_browser(request: Request, call_next):

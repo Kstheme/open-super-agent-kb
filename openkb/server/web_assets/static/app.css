@@ -111,6 +111,9 @@ p { margin-block: .4rem 1rem; }
 .review-proposal h3 { margin: 0 0 .8rem; }
 .review-rule { padding: .85rem; border-radius: .45rem; border: 1px solid var(--border); background: var(--background); }
 .review-rule h4 { margin: 0 0 .45rem; color: var(--primary); }
+.review-evidence { display: grid; gap: .8rem; list-style: none; margin: 0; padding: 0; }
+.review-evidence dl { margin-block: .4rem; }
+.review-evidence blockquote { margin-block: .45rem 0; background: var(--surface); }
 .review-actions { display: flex; align-items: start; flex-wrap: wrap; gap: 1rem 1.25rem; margin-top: 1rem; }
 .review-secondary { color: var(--primary); background: var(--surface); }
 .review-secondary:hover { background: #e7eef5; }

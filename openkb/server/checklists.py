@@ -6,11 +6,11 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from openkb.ingest.ledger import Ledger
-from openkb.ingest.model import Locator
 from openkb.ingest.sqlite import open_delivery_store
 from openkb.profiles.word_accessibility import CHECKLIST_TITLE
 
 from .delivery import start_delivery
+from .evidence_view import evidence_position
 from .web import render
 
 
@@ -84,25 +84,11 @@ def checklist(
                 selected = Ledger(store).locate_evidence(evidence)
             except KeyError:
                 raise HTTPException(404, "找不到此原文证据。") from None
-            position = _position(selected.locator, selected.block_id)
+            position = evidence_position(selected.locator, selected.block_id)
     return render(
         request, "checklist.html", title=artifact["title"], artifact=artifact, history=history,
         selected_evidence=selected, position=position,
     )
-
-
-def _position(locator: Locator, block_id: str) -> str:
-    if locator.table is not None and locator.row is not None:
-        return f"第 {locator.table} 张表，第 {locator.row} 行"
-    if locator.paragraph is not None:
-        return f"第 {locator.paragraph} 段"
-    if locator.page is not None:
-        return f"第 {locator.page} 页"
-    if locator.line_start is not None:
-        if locator.line_end and locator.line_end != locator.line_start:
-            return f"第 {locator.line_start}–{locator.line_end} 行"
-        return f"第 {locator.line_start} 行"
-    return f"资料块 {block_id}"
 
 
 @router.get("/evidence/{evidence_id}", response_class=HTMLResponse)
@@ -114,7 +100,7 @@ def evidence_detail(request: Request, evidence_id: str):
         raise HTTPException(404, "找不到此原文证据。") from None
     return render(
         request, "evidence.html", title="原文证据", evidence=evidence,
-        position=_position(evidence.locator, evidence.block_id),
+        position=evidence_position(evidence.locator, evidence.block_id),
     )
 
 

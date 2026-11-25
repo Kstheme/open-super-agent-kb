@@ -94,6 +94,13 @@ class ReviewsWebTests(BrowserCase):
         self.assertEqual(re.findall(r'data-item-id="([^"]+)"', result), ["data_tables"])
         for content in ("旧规则", "修改建议", "新版证据", REVISED_CHECK):
             self.assertIn(content, result)
+        evidence_path = re.search(r'href="(/evidence/[a-f0-9]+)">新版证据', result)[1]
+        position = "第 2 张表，第 1 行"
+        detail = self.page(evidence_path)
+        self.assertIn(position, detail)
+        evidence_version = re.search(r'<dt>资料版本</dt>\s*<dd><code>([a-f0-9]+)</code></dd>', detail)[1]
+        for content in (REVISED_RULE, self.revised.name, evidence_version, position):
+            self.assertIn(content, result)
         proposal = re.search(r'action="([^"]+/accept)"', result)[1]
         with self.post_form(proposal, {}) as response:
             accepted = response.read().decode("utf-8")

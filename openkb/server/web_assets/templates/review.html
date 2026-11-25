@@ -32,9 +32,12 @@
         <h4>修改建议</h4>
         <p>{{ proposal.revised_text }}</p>
         <p>{{ proposal.revised_method }}</p>
-        <ul class="evidence-links">
+        <ul class="review-evidence">
           {% for proof in proposal.evidence %}
-          <li><a href="/evidence/{{ proof.id }}">{% if proof.version_id == review.after_version %}新版证据{% else %}保留证据{% endif %} · {{ proof.original_name }}</a></li>
+          <li class="evidence-detail">
+            <a href="/evidence/{{ proof.id }}">{% if proof.version_id == review.after_version %}新版证据{% else %}保留证据{% endif %} · {{ proof.original_name }}</a>
+            {% with evidence=proof, position=positions[proof.id] %}{% include "evidence_excerpt.html" %}{% endwith %}
+          </li>
           {% endfor %}
         </ul>
       </section>

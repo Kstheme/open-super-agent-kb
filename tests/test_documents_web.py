@@ -5,6 +5,20 @@ from web_fixtures import BrowserCase
 
 
 class DocumentsWebTests(BrowserCase):
+    def test_unavailable_ledger_explains_how_to_recover(self):
+        self.settings.database.write_bytes(b"not a SQLite ledger")
+        for path in ("/documents", "/documents/import"):
+            with self.subTest(path=path), self.assertRaises(HTTPError) as caught:
+                if path == "/documents":
+                    self.page(path)
+                else:
+                    self.upload("rules.md", b"# Rules")
+            self.assertEqual(caught.exception.code, 503)
+            html = caught.exception.read().decode("utf-8")
+            self.assertIn("本地账本暂不可用", html)
+            self.assertIn("检查数据目录", html)
+            self.assertIn('href="/status"', html)
+
     def test_import_preserves_the_original_name_and_separates_same_name_documents(self):
         empty = self.page("/documents")
         self.assertIn("暂无资料", empty)

@@ -6,10 +6,11 @@ from typing import Literal
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from openkb.ingest.ledger import StoreError
+from openkb.ingest.model import Locator
 from openkb.ingest.sqlite import open_delivery_store
 
 from .documents import save_upload
+from .evidence_view import evidence_position
 from .reviewing import start_review
 from .web import render
 
@@ -71,7 +72,7 @@ def submit_revision(
             )
     except KeyError:
         return _listing(request, artifact_id, error="选中的清单或资料版本已不存在，请重新选择。")
-    except (OSError, StoreError, ValueError) as error:
+    except (OSError, ValueError) as error:
         return _listing(request, artifact_id, error=str(error))
     return RedirectResponse(f"/reviews/{report['id']}", status_code=303)
 
@@ -96,11 +97,15 @@ def _result(request: Request, review_id: str, *, error: str | None = None) -> HT
             artifact = store.artifact(review["artifact_id"], review["artifact_version"])
     except (KeyError, ValueError):
         raise HTTPException(404, "找不到此复核记录。") from None
+    positions = {
+        proof["id"]: evidence_position(Locator(**proof["locator"]), proof["block_id"])
+        for proposal in review["proposals"] for proof in proposal["evidence"]
+    }
     return render(
         request, "review.html", title=REVIEW_STATES[review["state"]], review=review, artifact=artifact,
         before=before, after=after, states=REVIEW_STATES, judgments=JUDGMENTS,
         item_names={item["slot_id"]: item["title"] for item in artifact["items"]},
-        failure=_failure_message(review), error=error, status_code=409 if error else 200,
+        positions=positions, failure=_failure_message(review), error=error, status_code=409 if error else 200,
     )
 
 

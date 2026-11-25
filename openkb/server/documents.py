@@ -10,7 +10,7 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from openkb.ingest.ledger import Ledger, StoreError
+from openkb.ingest.ledger import Ledger
 from openkb.ingest.parsers import PARSERS
 from openkb.ingest.sqlite import open_delivery_store
 
@@ -63,6 +63,6 @@ def import_document(request: Request, source: UploadFile | None = File(None)):
         settings = request.app.state.settings
         with open_delivery_store(settings.database) as store:
             version = save_upload(source, lambda path: Ledger(store).add(path, uuid4().hex))
-    except (OSError, StoreError, ValueError) as error:
+    except (OSError, ValueError) as error:
         return _page(request, error=str(error))
     return RedirectResponse(f"/documents?imported={version.id}", status_code=303)

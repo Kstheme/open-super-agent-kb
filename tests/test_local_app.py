@@ -1,5 +1,6 @@
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from io import StringIO
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -54,6 +55,30 @@ class LocalAppTests(unittest.TestCase):
         contents = (self.data / "config.toml").read_text(encoding="utf-8")
         self.assertIn('api_key = "fixture-only-secret"', contents)
         self.assertIn('model_id = "fixture-model"', contents)
+
+    def test_partial_config_write_allows_initialization_to_retry(self):
+        fdopen = os.fdopen
+
+        @contextmanager
+        def fail_during_write(descriptor, mode):
+            with fdopen(descriptor, mode) as stream:
+                original_write = stream.write
+
+                def write(data):
+                    original_write(data[:8])
+                    raise OSError("fixture disk write failed")
+
+                with patch.object(stream, "write", side_effect=write):
+                    yield stream
+
+        command = ["init", "--data-dir", str(self.data), "--config", str(self.config)]
+        with patch("openkb.server.local_cli.os.fdopen", side_effect=fail_during_write):
+            with redirect_stderr(StringIO()) as errors, self.assertRaises(SystemExit):
+                main(command)
+        self.assertIn("fixture disk write failed", errors.getvalue())
+        self.assertEqual(list(self.data.iterdir()), [])
+        self.initialize("--config", str(self.config))
+        self.assertEqual((self.data / "config.toml").read_bytes(), self.config.read_bytes())
 
     def test_starts_outside_checkout_with_local_assets_and_rejects_cross_origin(self):
         self.initialize("--config", str(self.config))
